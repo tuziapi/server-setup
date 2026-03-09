@@ -57,32 +57,45 @@ normalize_rule() {
   printf '%s/%s\n' "$port" "$proto"
 }
 
-detect_listening_rules() {
-  ss -H -lntu | awk '
+detect_listening_entries() {
+  ss -H -lntup | awk '
     {
       proto=$1
+      if (proto != "tcp" && proto != "udp") next
+
       local_addr=$5
+      host=""
+      port=""
 
-      gsub(/^\[/, "", local_addr)
-      gsub(/\]$/, "", local_addr)
+      if (local_addr ~ /^\[.*\]:[0-9]+$/) {
+        host=local_addr
+        sub(/^\[/, "", host)
+        sub(/\]:[0-9]+$/, "", host)
 
-      port=local_addr
-      sub(/^.*:/, "", port)
+        port=local_addr
+        sub(/^.*\]:/, "", port)
+      } else {
+        port=local_addr
+        sub(/^.*:/, "", port)
+
+        host=local_addr
+        sub(/:[^:]*$/, "", host)
+      }
+
       if (port !~ /^[0-9]+$/) next
 
-      host=local_addr
-      sub(/:[^:]*$/, "", host)
-      if (host ~ /^(127\.|::1$|localhost$)/) next
+      sub(/%.*/, "", host)
+      if (host == "") host="*"
 
-      if (proto == "tcp" || proto == "udp") {
-        print port "/" proto
-      }
+      print proto, host, port
     }
   ' | sort -u
 }
 
 declare -A UFW_RULES=()
 declare -A EXCLUDED_RULES=()
+declare -A LOOPBACK_SKIPPED_RULES=()
+declare -A EXCLUDED_SKIPPED_RULES=()
 AUTO_RULES_APPLIED=()
 
 add_rule() {
@@ -126,12 +139,18 @@ if [[ "$AUTO_ALLOW_LISTENING_PORTS" == "1" ]]; then
     warn "未检测到 ss 命令，跳过自动探测监听端口。"
   else
     build_excluded_rules
-    while IFS= read -r detected; do
-      [[ -z "$detected" ]] && continue
-      normalized="$(normalize_rule "$detected" || true)"
+    while read -r proto host port; do
+      [[ -z "$proto" || -z "$host" || -z "$port" ]] && continue
+      normalized="$(normalize_rule "${port}/${proto}" || true)"
       [[ -z "$normalized" ]] && continue
 
+      if [[ "$host" =~ ^127\. || "$host" == "::1" || "$host" =~ ^::ffff:127\. || "$host" == "localhost" ]]; then
+        LOOPBACK_SKIPPED_RULES["$normalized"]=1
+        continue
+      fi
+
       if is_excluded_rule "$normalized"; then
+        EXCLUDED_SKIPPED_RULES["$normalized"]=1
         continue
       fi
 
@@ -139,7 +158,7 @@ if [[ "$AUTO_ALLOW_LISTENING_PORTS" == "1" ]]; then
         add_rule "$normalized"
         AUTO_RULES_APPLIED+=("$normalized")
       fi
-    done < <(detect_listening_rules)
+    done < <(detect_listening_entries)
   fi
 fi
 
@@ -159,6 +178,16 @@ if [[ "$AUTO_ALLOW_LISTENING_PORTS" == "1" ]]; then
     log "已自动放行当前监听端口: ${AUTO_RULES_APPLIED[*]}"
   else
     log "未检测到需要自动新增放行的监听端口。"
+  fi
+
+  if [[ "${#LOOPBACK_SKIPPED_RULES[@]}" -gt 0 ]]; then
+    mapfile -t skipped_loopback < <(printf '%s\n' "${!LOOPBACK_SKIPPED_RULES[@]}" | sort)
+    log "以下监听端口仅绑定本机(127.0.0.1/::1)，未放行: ${skipped_loopback[*]}"
+  fi
+
+  if [[ "${#EXCLUDED_SKIPPED_RULES[@]}" -gt 0 ]]; then
+    mapfile -t skipped_excluded < <(printf '%s\n' "${!EXCLUDED_SKIPPED_RULES[@]}" | sort)
+    log "以下监听端口在 AUTO_ALLOW_EXCLUDE_PORTS 中，未放行: ${skipped_excluded[*]}"
   fi
 fi
 

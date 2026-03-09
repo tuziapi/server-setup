@@ -45,6 +45,7 @@ curl -fsSL https://raw.githubusercontent.com/tuziapi/server-setup/main/install.s
 - `nginx` 是安装步骤参数，必须放在 `bash -s --` 后，不要写成 `nginx curl ...`。
 - `install.sh` 会自动选择目标用户（用于 aliases/docker/node），如需覆盖可设置环境变量 `TARGET_USER`。
 - `security` 步骤默认会自动放行当前正在对外监听的端口，避免启用 UFW 后业务不可访问。
+- 自动放行基于 `ss -lntup` 探测，仅对非 `127.0.0.1`/`::1` 监听端口生效（本机回环端口不会放行）。
 - 如需关闭自动放行，可加 `--disable-auto-allow-listening` 并手动用 `--allow-ports` 指定端口。
 
 如果你不是 root，可用：
@@ -143,6 +144,7 @@ ufw reload
 建议：
 - 对外服务新开端口后，先 `ufw allow ...` 再对外发布。
 - 只放行业务必需端口，避免暴露不必要服务。
+- 若端口没有自动放行，先执行 `ss -tulpn | grep :端口`，确认服务是否仅监听 `127.0.0.1`/`::1`。
 
 ## 4. 常用环境变量
 

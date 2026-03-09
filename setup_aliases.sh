@@ -43,13 +43,14 @@ fi
 
 TARGET_HOME="$(user_home "$TARGET_USER")"
 ALIAS_FILE="$TARGET_HOME/.server_aliases"
+TARGET_SHELL="$(getent passwd "$TARGET_USER" | cut -d: -f7)"
 
 log "为用户 $TARGET_USER 写入常用别名 ..."
 cat >"$ALIAS_FILE" <<'EOF'
 # Added by server-setup/setup_aliases.sh
-alias l='ls -lhF'
-alias la='ls -A'
-alias ll='ls -alhF'
+alias l='command -p ls -lhF'
+alias la='command -p ls -A'
+alias ll='command -p ls -alhF'
 
 alias ..='cd ..'
 alias ...='cd ../..'
@@ -79,7 +80,15 @@ fi
 
 reload_aliases_for_target_user() {
   if [[ "$EUID" -eq 0 && "$TARGET_USER" != "$CURRENT_USER" ]]; then
-    su - "$TARGET_USER" -c "bash -lc 'source ~/.bashrc >/dev/null 2>&1 || true; source ~/.server_aliases >/dev/null 2>&1 || true'" \
+    if [[ "$TARGET_SHELL" == */zsh ]]; then
+      su - "$TARGET_USER" -c "zsh -lc 'source ~/.zshrc >/dev/null 2>&1 || true; source ~/.server_aliases >/dev/null 2>&1 || true'" \
+        || warn "自动加载别名失败（用户: $TARGET_USER），新终端会话会自动生效。"
+    else
+      su - "$TARGET_USER" -c "bash -lc 'source ~/.bashrc >/dev/null 2>&1 || true; source ~/.server_aliases >/dev/null 2>&1 || true'" \
+        || warn "自动加载别名失败（用户: $TARGET_USER），新终端会话会自动生效。"
+    fi
+  elif [[ "$TARGET_SHELL" == */zsh ]]; then
+    zsh -lc 'source ~/.zshrc >/dev/null 2>&1 || true; source ~/.server_aliases >/dev/null 2>&1 || true' \
       || warn "自动加载别名失败（用户: $TARGET_USER），下次登录会自动生效。"
   else
     # shellcheck disable=SC1090
@@ -89,7 +98,7 @@ reload_aliases_for_target_user() {
   fi
 }
 
-log "自动加载 shell 配置（source ~/.bashrc && source ~/.server_aliases）..."
+log "自动加载目标用户 shell 配置..."
 reload_aliases_for_target_user
 
 log "配置 Git 别名 ..."
@@ -122,4 +131,4 @@ else
 fi
 rm -f "$tmp_git_script"
 
-log "别名配置完成。当前执行已自动加载；新终端会话也会自动生效。"
+log "别名配置完成。若当前终端是父进程（例如 curl | bash 启动），请新开终端会话后使用。"
