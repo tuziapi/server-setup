@@ -1,0 +1,16 @@
+{
+  "domains": [
+    {
+      "domain": "api.example.com",
+      "target_host": "127.0.0.1",
+      "target_port": 3000,
+      "completed": false
+    },
+    {
+      "domain": "admin.example.com",
+      "target_host": "127.0.0.1",
+      "target_port": 8080,
+      "completed": false
+    }
+  ]
+}
