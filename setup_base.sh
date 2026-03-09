@@ -14,6 +14,7 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
 
 说明:
   该脚本需要 root 权限；非 root 用户请先用 su 提权（有 sudo 也可）。
+  仓库里不存在的软件包会自动跳过，不会中断其他常用工具安装。
 EOF
   exit 0
 fi
@@ -45,8 +46,59 @@ PACKAGES=(
   cron
 )
 
+resolve_package() {
+  local pkg="$1"
+  case "$pkg" in
+    dnsutils)
+      # Debian 新版常见为 bind9-dnsutils，旧配置里常见 dnsutils。
+      if apt-cache show dnsutils >/dev/null 2>&1; then
+        echo "dnsutils"
+        return 0
+      fi
+      if apt-cache show bind9-dnsutils >/dev/null 2>&1; then
+        echo "bind9-dnsutils"
+        return 0
+      fi
+      return 1
+      ;;
+    *)
+      apt-cache show "$pkg" >/dev/null 2>&1 || return 1
+      echo "$pkg"
+      return 0
+      ;;
+  esac
+}
+
+build_install_list() {
+  local resolved=""
+  INSTALL_LIST=()
+  SKIPPED_LIST=()
+
+  # 先 update，保证 apt-cache 查询结果准确。
+  apt_update_once
+
+  for pkg in "${PACKAGES[@]}"; do
+    if resolved="$(resolve_package "$pkg")"; then
+      INSTALL_LIST+=("$resolved")
+    else
+      SKIPPED_LIST+=("$pkg")
+    fi
+  done
+}
+
 log "开始初始化基础环境 ..."
-apt_install "${PACKAGES[@]}"
+build_install_list
+
+if [[ "${#SKIPPED_LIST[@]}" -gt 0 ]]; then
+  warn "以下包在当前系统仓库中不可用，已跳过: ${SKIPPED_LIST[*]}"
+fi
+
+if [[ "${#INSTALL_LIST[@]}" -eq 0 ]]; then
+  die "未找到可安装的软件包，请检查 apt 源配置后重试。"
+fi
+
+log "将安装可用软件包: ${INSTALL_LIST[*]}"
+apt_install "${INSTALL_LIST[@]}"
 
 if systemctl list-unit-files | grep -q '^cron\.service'; then
   systemctl enable --now cron >/dev/null 2>&1 || warn "cron 启动失败，请手动检查。"

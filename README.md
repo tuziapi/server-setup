@@ -125,6 +125,11 @@ bash setup_nginx_proxy.sh --config domains.json --email you@example.com
 - `DOCKER_CHANNEL`：Docker 渠道，默认 `stable`。
 - `NODE_VERSION`：Node 版本，默认 `lts/*`。
 
+## 4.1 常用工具说明
+
+- `dnsutils`：DNS 排障工具集（`dig`/`nslookup`/`host`），用于排查域名解析，尤其在 Nginx + Certbot 配置证书时很常用。
+- `software-properties-common`：提供 `add-apt-repository` 等能力。部分发行版镜像可能不提供该包，`setup_base.sh` 会自动跳过不可用包，不影响其他常用工具安装。
+
 ## 5. 仓库内一键入口脚本
 
 ```bash
