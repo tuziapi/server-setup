@@ -10,7 +10,7 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   bash setup_docker.sh
 
 可选环境变量:
-  TARGET_USER=ubuntu               将用户加入 docker 组
+  TARGET_USER=your_user          将用户加入 docker 组
   DOCKER_CHANNEL=stable            Docker 渠道（默认 stable）
   DOCKER_INSTALL_URL=https://get.docker.com
                                    Docker 官方安装脚本地址

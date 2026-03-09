@@ -8,10 +8,10 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   cat <<'EOF'
 用法:
   bash setup_nodejs.sh
-  TARGET_USER=ubuntu bash setup_nodejs.sh
+  TARGET_USER=your_user bash setup_nodejs.sh
 
 可选环境变量:
-  TARGET_USER=ubuntu
+  TARGET_USER=your_user
   NVM_VERSION=v0.40.4
   NODE_VERSION=lts/*
   NVM_INSTALL_URL=https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.4/install.sh
@@ -29,12 +29,22 @@ NVM_VERSION="${NVM_VERSION:-v0.40.4}"
 NODE_VERSION="${NODE_VERSION:-lts/*}"
 NVM_INSTALL_URL="${NVM_INSTALL_URL:-https://raw.githubusercontent.com/nvm-sh/nvm/${NVM_VERSION}/install.sh}"
 
+list_human_users() {
+  awk -F: '
+    ($3 >= 1000) && ($1 != "nobody") && ($7 !~ /(nologin|false)$/) { print $1 }
+  ' /etc/passwd | paste -sd ', ' -
+}
+
 if ! id "$TARGET_USER" >/dev/null 2>&1; then
-  die "用户不存在: $TARGET_USER"
+  users="$(list_human_users || true)"
+  if [[ -n "$users" ]]; then
+    die "用户不存在: ${TARGET_USER}。可用用户: ${users}"
+  fi
+  die "用户不存在: ${TARGET_USER}。当前系统未检测到常规用户，请先创建用户后重试。"
 fi
 
 if [[ "$EUID" -ne 0 && "$TARGET_USER" != "$CURRENT_USER" ]]; then
-  die "当前用户无权为 $TARGET_USER 安装 Node.js。请切换 root 执行（可先用 su 提权，有 sudo 也可）。"
+  die "当前用户无权为 ${TARGET_USER} 安装 Node.js。请切换 root 执行（可先用 su 提权，有 sudo 也可）。"
 fi
 
 if ! has_cmd curl; then

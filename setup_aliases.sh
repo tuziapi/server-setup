@@ -8,10 +8,10 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   cat <<'EOF'
 用法:
   bash setup_aliases.sh
-  TARGET_USER=ubuntu bash setup_aliases.sh
+  TARGET_USER=your_user bash setup_aliases.sh
 
 可选环境变量:
-  TARGET_USER=ubuntu   指定要写入别名的用户
+  TARGET_USER=your_user   指定要写入别名的用户
 
 说明:
   - 为当前用户配置时可直接执行。
@@ -23,12 +23,22 @@ fi
 TARGET_USER="${TARGET_USER:-${SUDO_USER:-$(id -un)}}"
 CURRENT_USER="$(id -un)"
 
+list_human_users() {
+  awk -F: '
+    ($3 >= 1000) && ($1 != "nobody") && ($7 !~ /(nologin|false)$/) { print $1 }
+  ' /etc/passwd | paste -sd ', ' -
+}
+
 if ! id "$TARGET_USER" >/dev/null 2>&1; then
-  die "用户不存在: $TARGET_USER"
+  users="$(list_human_users || true)"
+  if [[ -n "$users" ]]; then
+    die "用户不存在: ${TARGET_USER}。可用用户: ${users}"
+  fi
+  die "用户不存在: ${TARGET_USER}。当前系统未检测到常规用户，请先创建用户后重试。"
 fi
 
 if [[ "$EUID" -ne 0 && "$TARGET_USER" != "$CURRENT_USER" ]]; then
-  die "当前用户无权修改 $TARGET_USER 的 shell 配置。请切换 root 执行（可先用 su 提权，有 sudo 也可）。"
+  die "当前用户无权修改 ${TARGET_USER} 的 shell 配置。请切换 root 执行（可先用 su 提权，有 sudo 也可）。"
 fi
 
 TARGET_HOME="$(user_home "$TARGET_USER")"

@@ -5,6 +5,10 @@ log() {
   printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"
 }
 
+warn() {
+  printf '[%s] [WARN] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >&2
+}
+
 die() {
   printf '[%s] [ERROR] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >&2
   exit 1
@@ -24,7 +28,6 @@ usage() {
 常用参数:
   --repo <owner/repo>          GitHub 仓库（默认: tuziapi/server-setup）
   --ref <branch/tag/sha>        Git 引用（默认: main）
-  --target-user <user>          目标用户（别名/Node/Docker 组）
   --timezone <TZ>               传给 setup_base.sh（例如 Asia/Shanghai）
   --ssh-port <port>             传给 setup_security.sh（默认 22）
   --allow-ports <list>          额外开放端口（如 80,443,8080/tcp）
@@ -45,7 +48,7 @@ usage() {
 
 示例（无需 clone）:
   curl -fsSL https://raw.githubusercontent.com/tuziapi/server-setup/main/install.sh | bash
-  curl -fsSL https://raw.githubusercontent.com/tuziapi/server-setup/main/install.sh | bash -s -- all --target-user ubuntu
+  curl -fsSL https://raw.githubusercontent.com/tuziapi/server-setup/main/install.sh | bash -s -- all
   # 非 root 可改用: su -c '... | bash'（有 sudo 也可用 sudo bash）
 EOF
 }
@@ -61,6 +64,49 @@ validate_step() {
     base|aliases|security|docker|node|nginx) return 0 ;;
     *) return 1 ;;
   esac
+}
+
+detect_primary_user() {
+  awk -F: '
+    ($3 >= 1000) && ($1 != "nobody") && ($7 !~ /(nologin|false)$/) { print $1; exit }
+  ' /etc/passwd
+}
+
+steps_need_target_user() {
+  for step in "${STEPS[@]}"; do
+    case "$step" in
+      aliases|docker|node)
+        return 0
+        ;;
+    esac
+  done
+  return 1
+}
+
+normalize_target_user() {
+  local auto_user=""
+
+  if [[ -n "$TARGET_USER" ]] && id "$TARGET_USER" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  auto_user="$(detect_primary_user || true)"
+  if [[ -n "$auto_user" ]]; then
+    if [[ -n "$TARGET_USER" ]]; then
+      warn "目标用户 '${TARGET_USER}' 不存在，自动切换为 '${auto_user}'。"
+    else
+      log "自动使用目标用户: ${auto_user}"
+    fi
+    TARGET_USER="$auto_user"
+    return 0
+  fi
+
+  if [[ -n "$TARGET_USER" ]]; then
+    warn "目标用户 '${TARGET_USER}' 不存在，且未检测到常规用户，自动切换为 'root'。"
+  else
+    warn "未检测到常规用户，自动使用 root。"
+  fi
+  TARGET_USER="root"
 }
 
 run_dir_cmd() {
@@ -79,7 +125,7 @@ WORKDIR_BASE="${WORKDIR_BASE:-/tmp}"
 KEEP_WORKDIR=0
 DRY_RUN=0
 
-TARGET_USER="${TARGET_USER:-${SUDO_USER:-$(id -un)}}"
+TARGET_USER="${TARGET_USER:-${SUDO_USER:-}}"
 TIMEZONE="${TIMEZONE:-}"
 SSH_PORT="${SSH_PORT:-22}"
 ALLOW_PORTS="${ALLOW_PORTS:-}"
@@ -110,9 +156,7 @@ while [[ "$#" -gt 0 ]]; do
       shift 2
       ;;
     --target-user)
-      require_value "$1" "${2:-}"
-      TARGET_USER="$2"
-      shift 2
+      die "--target-user 参数已移除：脚本现在会自动选择目标用户。"
       ;;
     --timezone)
       require_value "$1" "${2:-}"
@@ -219,6 +263,10 @@ fi
 for step in "${STEPS[@]}"; do
   validate_step "$step" || die "未知步骤: $step"
 done
+
+if steps_need_target_user; then
+  normalize_target_user
+fi
 
 if [[ "$DRY_RUN" -eq 1 ]]; then
   printf 'dry-run:\n'

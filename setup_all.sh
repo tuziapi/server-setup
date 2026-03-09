@@ -15,7 +15,7 @@ usage() {
 
 说明:
   1) 除 aliases/node（针对当前用户）外，其他步骤通常需要 root。
-  2) 建议传入 TARGET_USER=你的用户名（例如 ubuntu）。
+  2) 建议传入 TARGET_USER=你的用户名（例如 TARGET_USER=your_user）。
   3) 执行 nginx 步骤时，需准备 domains.json，且默认要求 CERTBOT_EMAIL。
 EOF
 }
