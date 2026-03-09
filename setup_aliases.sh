@@ -63,4 +63,34 @@ if [[ "$EUID" -eq 0 ]]; then
   chown "$TARGET_USER:$TARGET_USER" "$ALIAS_FILE" "$TARGET_HOME/.bashrc" "$TARGET_HOME/.zshrc"
 fi
 
+log "配置 Git 别名 ..."
+tmp_git_script="$(mktemp)"
+cat >"$tmp_script" <<'EOF'
+#!/bin/bash
+if ! command -v git &> /dev/null; then
+  echo "Git 未安装，跳过 Git 别名配置。"
+  exit 0
+fi
+git config --global alias.st status
+git config --global alias.co checkout
+git config --global alias.ci commit
+git config --global alias.br branch
+git config --global alias.df diff
+git config --global alias.last "log -1 HEAD"
+git config --global alias.unstage "reset HEAD --"
+git config --global alias.rst "reset --hard"
+git config --global alias.amend "commit --amend"
+git config --global alias.slog "log --oneline --decorate"
+git config --global alias.lg "log --graph --pretty=format:'%C(yellow)%h%C(reset) %C(bold blue)%an%C(reset) %C(green)(%ar)%C(reset) %C(bold cyan)%s%C(reset) %C(red)%d%C(reset)' --abbrev-commit"
+EOF
+
+chmod +x "$tmp_script"
+if [[ "$EUID" -eq 0 ]]; then
+  chown "$TARGET_USER" "$tmp_script"
+  su - "$TARGET_USER" -c "$tmp_script"
+else
+  "$tmp_script"
+fi
+rm -f "$tmp_script"
+
 log "别名配置完成。重新登录或执行 'source ~/.bashrc' / 'source ~/.zshrc' 生效。"

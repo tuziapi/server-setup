@@ -7,10 +7,42 @@
 - 每个脚本单一职责，可单独运行。
 - 依赖公开地址，不需要登录 GitHub。
 
+## 0. 无需 clone：curl 一键安装
+
+默认步骤（`base aliases security docker`）：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/tuziapi/server-setup/main/install.sh | sudo bash
+```
+
+全量步骤（含 `node`）：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/tuziapi/server-setup/main/install.sh | sudo bash -s -- all --target-user ubuntu
+```
+
+只执行指定步骤：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/tuziapi/server-setup/main/install.sh | sudo bash -s -- base aliases node --target-user ubuntu
+```
+
+Nginx + SSL（`domains.json` 从 URL 下载）：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/tuziapi/server-setup/main/install.sh | sudo bash -s -- nginx --config-url https://example.com/domains.json --certbot-email you@example.com
+```
+
+说明：
+- `install.sh` 会临时下载仓库压缩包执行，不会 `git clone`。
+- 若默认分支不是 `main`，可追加 `--ref master`（或具体 tag/commit）。
+- `nginx` 步骤需要 `--config-file` 或 `--config-url`。
+
 ## 1. 脚本清单
 
 | 脚本 | 作用 | 常用命令 |
 |---|---|---|
+| `install.sh` | 远程引导脚本：下载仓库压缩包并执行步骤（无需 clone） | `curl -fsSL .../install.sh \| sudo bash -s -- all --target-user ubuntu` |
 | `setup_base.sh` | 安装基础软件（curl/git/jq/tmux/ufw/fail2ban 等）并拉起常用服务 | `sudo bash setup_base.sh` |
 | `setup_aliases.sh` | 为用户写入 `~/.server_aliases`，自动接入 `.bashrc/.zshrc` | `sudo TARGET_USER=ubuntu bash setup_aliases.sh` |
 | `setup_security.sh` | 配置 UFW + fail2ban，支持可选 SSH 加固 | `sudo SSH_PORT=22 ALLOW_PORTS=80,443 bash setup_security.sh` |
@@ -79,7 +111,7 @@ sudo bash setup_nginx_proxy.sh --config domains.json --email you@example.com
 - `DOCKER_CHANNEL`：Docker 渠道，默认 `stable`。
 - `NODE_VERSION`：Node 版本，默认 `lts/*`。
 
-## 5. 一键入口脚本
+## 5. 仓库内一键入口脚本
 
 ```bash
 # 默认执行: base aliases security docker
@@ -106,6 +138,7 @@ sudo TARGET_USER=ubuntu bash setup_all.sh all
 每个脚本均支持 `-h/--help`，可直接查看用法，例如：
 
 ```bash
+bash install.sh --help
 bash setup_security.sh --help
 bash setup_nginx_proxy.sh --help
 ```

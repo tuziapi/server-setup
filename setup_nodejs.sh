@@ -54,6 +54,10 @@ nvm install "$NODE_VERSION"
 nvm alias default "$NODE_VERSION"
 node -v
 npm -v
+
+echo "Installing Claude Code and Statusline Plugin..."
+npm install -g https://gaccode.com/claudecode/install --registry=https://registry.npmmirror.com
+npm i -g https://gaccode.com/claudecode/install/statusline-plugin --registry=https://registry.npmmirror.com/
 EOF
 
 chmod 755 "$tmp_script"
