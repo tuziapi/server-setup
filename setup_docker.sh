@@ -7,13 +7,16 @@ source "$SCRIPT_DIR/lib/common.sh"
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   cat <<'EOF'
 用法:
-  sudo bash setup_docker.sh
+  bash setup_docker.sh
 
 可选环境变量:
   TARGET_USER=ubuntu               将用户加入 docker 组
   DOCKER_CHANNEL=stable            Docker 渠道（默认 stable）
   DOCKER_INSTALL_URL=https://get.docker.com
                                    Docker 官方安装脚本地址
+
+说明:
+  该脚本需要 root 权限；非 root 用户请先用 su 提权（有 sudo 也可）。
 EOF
   exit 0
 fi

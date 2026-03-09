@@ -8,10 +8,14 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   cat <<'EOF'
 用法:
   bash setup_aliases.sh
-  sudo TARGET_USER=ubuntu bash setup_aliases.sh
+  TARGET_USER=ubuntu bash setup_aliases.sh
 
 可选环境变量:
   TARGET_USER=ubuntu   指定要写入别名的用户
+
+说明:
+  - 为当前用户配置时可直接执行。
+  - 为其他用户配置时需要 root 权限（非 root 可先用 su 提权，有 sudo 也可）。
 EOF
   exit 0
 fi
@@ -24,7 +28,7 @@ if ! id "$TARGET_USER" >/dev/null 2>&1; then
 fi
 
 if [[ "$EUID" -ne 0 && "$TARGET_USER" != "$CURRENT_USER" ]]; then
-  die "当前用户无权修改 $TARGET_USER 的 shell 配置。请使用 sudo。"
+  die "当前用户无权修改 $TARGET_USER 的 shell 配置。请切换 root 执行（可先用 su 提权，有 sudo 也可）。"
 fi
 
 TARGET_HOME="$(user_home "$TARGET_USER")"
@@ -65,7 +69,7 @@ fi
 
 log "配置 Git 别名 ..."
 tmp_git_script="$(mktemp)"
-cat >"$tmp_script" <<'EOF'
+cat >"$tmp_git_script" <<'EOF'
 #!/bin/bash
 if ! command -v git &> /dev/null; then
   echo "Git 未安装，跳过 Git 别名配置。"
@@ -84,13 +88,13 @@ git config --global alias.slog "log --oneline --decorate"
 git config --global alias.lg "log --graph --pretty=format:'%C(yellow)%h%C(reset) %C(bold blue)%an%C(reset) %C(green)(%ar)%C(reset) %C(bold cyan)%s%C(reset) %C(red)%d%C(reset)' --abbrev-commit"
 EOF
 
-chmod +x "$tmp_script"
+chmod +x "$tmp_git_script"
 if [[ "$EUID" -eq 0 ]]; then
-  chown "$TARGET_USER" "$tmp_script"
-  su - "$TARGET_USER" -c "$tmp_script"
+  chown "$TARGET_USER" "$tmp_git_script"
+  su - "$TARGET_USER" -c "$tmp_git_script"
 else
-  "$tmp_script"
+  "$tmp_git_script"
 fi
-rm -f "$tmp_script"
+rm -f "$tmp_git_script"
 
 log "别名配置完成。重新登录或执行 'source ~/.bashrc' / 'source ~/.zshrc' 生效。"

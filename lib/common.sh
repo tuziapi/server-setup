@@ -22,7 +22,7 @@ has_cmd() {
 
 require_root() {
   if [[ "${EUID}" -ne 0 ]]; then
-    die "请使用 root 或 sudo 执行该脚本。"
+    die "请使用 root 执行该脚本（可先通过 su 提权；有 sudo 也可用）。"
   fi
 }
 

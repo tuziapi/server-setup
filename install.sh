@@ -44,8 +44,9 @@ usage() {
   -h, --help                    查看帮助
 
 示例（无需 clone）:
-  curl -fsSL https://raw.githubusercontent.com/tuziapi/server-setup/main/install.sh | sudo bash
-  curl -fsSL https://raw.githubusercontent.com/tuziapi/server-setup/main/install.sh | sudo bash -s -- all --target-user ubuntu
+  curl -fsSL https://raw.githubusercontent.com/tuziapi/server-setup/main/install.sh | bash
+  curl -fsSL https://raw.githubusercontent.com/tuziapi/server-setup/main/install.sh | bash -s -- all --target-user ubuntu
+  # 非 root 可改用: su -c '... | bash'（有 sudo 也可用 sudo bash）
 EOF
 }
 
@@ -233,7 +234,7 @@ if ! command -v curl >/dev/null 2>&1; then
 fi
 
 if [[ "${EUID}" -ne 0 ]]; then
-  die "请使用 root 或 sudo 执行（例如: curl ... | sudo bash）。"
+  die "请使用 root 执行（可先用 su 提权后再运行；有 sudo 也可使用）。"
 fi
 
 mkdir -p "$WORKDIR_BASE"

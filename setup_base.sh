@@ -7,10 +7,13 @@ source "$SCRIPT_DIR/lib/common.sh"
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   cat <<'EOF'
 用法:
-  sudo bash setup_base.sh
+  bash setup_base.sh
 
 可选环境变量:
   TIMEZONE=Asia/Shanghai   设置系统时区（可选）
+
+说明:
+  该脚本需要 root 权限；非 root 用户请先用 su 提权（有 sudo 也可）。
 EOF
   exit 0
 fi

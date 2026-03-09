@@ -7,13 +7,16 @@ source "$SCRIPT_DIR/lib/common.sh"
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   cat <<'EOF'
 用法:
-  sudo bash setup_security.sh
+  bash setup_security.sh
 
 可选环境变量:
   SSH_PORT=22                  SSH 端口（默认 22）
   ALLOW_PORTS=80,443,8080/tcp  额外开放端口（逗号分隔）
   HARDEN_SSH=1                 启用 SSH 基础加固
   DISABLE_PASSWORD_AUTH=1      配合 HARDEN_SSH=1 禁用 SSH 密码登录
+
+说明:
+  该脚本需要 root 权限；非 root 用户请先用 su 提权（有 sudo 也可）。
 EOF
   exit 0
 fi

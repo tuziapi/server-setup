@@ -9,61 +9,75 @@
 
 ## 0. 无需 clone：curl 一键安装
 
+提权方式：
+- 已是 `root`：使用 `| bash`
+- 非 `root`：优先使用 `su -c '... | bash'`
+- 非 `root` 且有 `sudo`：也可使用 `| sudo bash`
+
 默认步骤（`base aliases security docker`）：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tuziapi/server-setup/main/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/tuziapi/server-setup/main/install.sh | bash
 ```
 
 全量步骤（含 `node`）：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tuziapi/server-setup/main/install.sh | sudo bash -s -- all --target-user ubuntu
+curl -fsSL https://raw.githubusercontent.com/tuziapi/server-setup/main/install.sh | bash -s -- all --target-user ubuntu
 ```
 
 只执行指定步骤：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tuziapi/server-setup/main/install.sh | sudo bash -s -- base aliases node --target-user ubuntu
+curl -fsSL https://raw.githubusercontent.com/tuziapi/server-setup/main/install.sh | bash -s -- base aliases node --target-user ubuntu
 ```
 
 Nginx + SSL（`domains.json` 从 URL 下载）：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/tuziapi/server-setup/main/install.sh | sudo bash -s -- nginx --config-url https://example.com/domains.json --certbot-email you@example.com
+curl -fsSL https://raw.githubusercontent.com/tuziapi/server-setup/main/install.sh | bash -s -- nginx --config-url https://example.com/domains.json --certbot-email you@example.com
 ```
 
 说明：
 - `install.sh` 会临时下载仓库压缩包执行，不会 `git clone`。
 - 若默认分支不是 `main`，可追加 `--ref master`（或具体 tag/commit）。
 - `nginx` 步骤需要 `--config-file` 或 `--config-url`。
+- `nginx` 是安装步骤参数，必须放在 `bash -s --` 后，不要写成 `nginx curl ...`。
+
+如果你不是 root，可用：
+
+```bash
+su -c 'curl -fsSL https://raw.githubusercontent.com/tuziapi/server-setup/main/install.sh | bash -s -- all --target-user ubuntu'
+```
 
 ## 1. 脚本清单
 
 | 脚本 | 作用 | 常用命令 |
 |---|---|---|
-| `install.sh` | 远程引导脚本：下载仓库压缩包并执行步骤（无需 clone） | `curl -fsSL .../install.sh \| sudo bash -s -- all --target-user ubuntu` |
-| `setup_base.sh` | 安装基础软件（curl/git/jq/tmux/ufw/fail2ban 等）并拉起常用服务 | `sudo bash setup_base.sh` |
-| `setup_aliases.sh` | 为用户写入 `~/.server_aliases`，自动接入 `.bashrc/.zshrc` | `sudo TARGET_USER=ubuntu bash setup_aliases.sh` |
-| `setup_security.sh` | 配置 UFW + fail2ban，支持可选 SSH 加固 | `sudo SSH_PORT=22 ALLOW_PORTS=80,443 bash setup_security.sh` |
-| `setup_docker.sh` | 使用 Docker 官方安装脚本安装 Docker | `sudo TARGET_USER=ubuntu bash setup_docker.sh` |
-| `setup_nodejs.sh` | 使用 nvm 官方安装脚本安装 Node.js（默认 LTS） | `sudo TARGET_USER=ubuntu bash setup_nodejs.sh` |
-| `setup_nginx_proxy.sh` | 按 `domains.json` 批量配置 Nginx 反向代理，可选自动签发证书 | `sudo bash setup_nginx_proxy.sh --config domains.json --email you@example.com` |
-| `setup_all.sh` | 一键执行多个步骤（默认 base+aliases+security+docker） | `sudo TARGET_USER=ubuntu bash setup_all.sh` |
+| `install.sh` | 远程引导脚本：下载仓库压缩包并执行步骤（无需 clone） | `curl -fsSL .../install.sh \| bash -s -- all --target-user ubuntu` |
+| `setup_base.sh` | 安装基础软件（curl/git/jq/tmux/ufw/fail2ban 等）并拉起常用服务 | `bash setup_base.sh` |
+| `setup_aliases.sh` | 为用户写入 `~/.server_aliases`，自动接入 `.bashrc/.zshrc` | `TARGET_USER=ubuntu bash setup_aliases.sh` |
+| `setup_security.sh` | 配置 UFW + fail2ban，支持可选 SSH 加固 | `SSH_PORT=22 ALLOW_PORTS=80,443 bash setup_security.sh` |
+| `setup_docker.sh` | 使用 Docker 官方安装脚本安装 Docker | `TARGET_USER=ubuntu bash setup_docker.sh` |
+| `setup_nodejs.sh` | 使用 nvm 官方安装脚本安装 Node.js（默认 LTS） | `TARGET_USER=ubuntu bash setup_nodejs.sh` |
+| `setup_nginx_proxy.sh` | 按 `domains.json` 批量配置 Nginx 反向代理，可选自动签发证书 | `bash setup_nginx_proxy.sh --config domains.json --email you@example.com` |
+| `setup_all.sh` | 一键执行多个步骤（默认 base+aliases+security+docker） | `TARGET_USER=ubuntu bash setup_all.sh` |
 
 ## 2. 推荐执行顺序
 
-1. `sudo TARGET_USER=ubuntu bash setup_base.sh`
-2. `sudo TARGET_USER=ubuntu bash setup_aliases.sh`
-3. `sudo SSH_PORT=22 ALLOW_PORTS=80,443 bash setup_security.sh`
-4. `sudo TARGET_USER=ubuntu bash setup_docker.sh`
-5. `sudo TARGET_USER=ubuntu bash setup_nodejs.sh`（如需 Node.js）
-6. `sudo bash setup_nginx_proxy.sh --config domains.json --email you@example.com`（如需反代 + SSL）
+说明：以下命令默认以 `root` 执行；非 root 用户请先 `su` 提权（有 `sudo` 也可）。
+
+1. `bash setup_base.sh`
+2. `TARGET_USER=ubuntu bash setup_aliases.sh`
+3. `SSH_PORT=22 ALLOW_PORTS=80,443 bash setup_security.sh`
+4. `TARGET_USER=ubuntu bash setup_docker.sh`
+5. `TARGET_USER=ubuntu bash setup_nodejs.sh`（如需 Node.js）
+6. `bash setup_nginx_proxy.sh --config domains.json --email you@example.com`（如需反代 + SSL）
 
 如果想一次执行（不含 nginx）：
 
 ```bash
-sudo TARGET_USER=ubuntu bash setup_all.sh all
+TARGET_USER=ubuntu bash setup_all.sh all
 ```
 
 ## 3. Nginx 反向代理配置
@@ -92,7 +106,7 @@ cp domains.example.json domains.json
 3. 执行脚本：
 
 ```bash
-sudo bash setup_nginx_proxy.sh --config domains.json --email you@example.com
+bash setup_nginx_proxy.sh --config domains.json --email you@example.com
 ```
 
 可选参数：
@@ -115,13 +129,13 @@ sudo bash setup_nginx_proxy.sh --config domains.json --email you@example.com
 
 ```bash
 # 默认执行: base aliases security docker
-sudo TARGET_USER=ubuntu bash setup_all.sh
+TARGET_USER=ubuntu bash setup_all.sh
 
 # 执行指定步骤
-sudo TARGET_USER=ubuntu bash setup_all.sh base aliases node
+TARGET_USER=ubuntu bash setup_all.sh base aliases node
 
 # 包含 node 的全量步骤（不含 nginx）
-sudo TARGET_USER=ubuntu bash setup_all.sh all
+TARGET_USER=ubuntu bash setup_all.sh all
 ```
 
 ## 6. 参考的 GitHub 开源项目（均为公开地址）

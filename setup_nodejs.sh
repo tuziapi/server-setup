@@ -8,13 +8,17 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   cat <<'EOF'
 用法:
   bash setup_nodejs.sh
-  sudo TARGET_USER=ubuntu bash setup_nodejs.sh
+  TARGET_USER=ubuntu bash setup_nodejs.sh
 
 可选环境变量:
   TARGET_USER=ubuntu
   NVM_VERSION=v0.40.4
   NODE_VERSION=lts/*
   NVM_INSTALL_URL=https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.4/install.sh
+
+说明:
+  - 为当前用户安装时可直接执行。
+  - 为其他用户安装时需要 root 权限（非 root 可先用 su 提权，有 sudo 也可）。
 EOF
   exit 0
 fi
@@ -30,7 +34,7 @@ if ! id "$TARGET_USER" >/dev/null 2>&1; then
 fi
 
 if [[ "$EUID" -ne 0 && "$TARGET_USER" != "$CURRENT_USER" ]]; then
-  die "当前用户无权为 $TARGET_USER 安装 Node.js。请使用 sudo。"
+  die "当前用户无权为 $TARGET_USER 安装 Node.js。请切换 root 执行（可先用 su 提权，有 sudo 也可）。"
 fi
 
 if ! has_cmd curl; then
