@@ -31,6 +31,10 @@ usage() {
   --timezone <TZ>               传给 setup_base.sh（例如 Asia/Shanghai）
   --ssh-port <port>             传给 setup_security.sh（默认 22）
   --allow-ports <list>          额外开放端口（如 80,443,8080/tcp）
+  --disable-auto-allow-listening
+                                关闭自动放行当前监听端口
+  --auto-allow-exclude-ports <list>
+                                自动放行排除列表（默认 68/udp,546/udp）
   --harden-ssh                  启用 SSH 基础加固
   --disable-password-auth       禁用 SSH 密码登录（会自动开启 --harden-ssh）
   --docker-channel <channel>    Docker 渠道（默认 stable）
@@ -129,6 +133,8 @@ TARGET_USER="${TARGET_USER:-${SUDO_USER:-}}"
 TIMEZONE="${TIMEZONE:-}"
 SSH_PORT="${SSH_PORT:-22}"
 ALLOW_PORTS="${ALLOW_PORTS:-}"
+AUTO_ALLOW_LISTENING_PORTS="${AUTO_ALLOW_LISTENING_PORTS:-1}"
+AUTO_ALLOW_EXCLUDE_PORTS="${AUTO_ALLOW_EXCLUDE_PORTS:-68/udp,546/udp}"
 HARDEN_SSH="${HARDEN_SSH:-0}"
 DISABLE_PASSWORD_AUTH="${DISABLE_PASSWORD_AUTH:-0}"
 DOCKER_CHANNEL="${DOCKER_CHANNEL:-stable}"
@@ -171,6 +177,15 @@ while [[ "$#" -gt 0 ]]; do
     --allow-ports)
       require_value "$1" "${2:-}"
       ALLOW_PORTS="$2"
+      shift 2
+      ;;
+    --disable-auto-allow-listening)
+      AUTO_ALLOW_LISTENING_PORTS=0
+      shift
+      ;;
+    --auto-allow-exclude-ports)
+      require_value "$1" "${2:-}"
+      AUTO_ALLOW_EXCLUDE_PORTS="$2"
       shift 2
       ;;
     --harden-ssh)
@@ -325,6 +340,8 @@ for step in "${STEPS[@]}"; do
       run_dir_cmd "$REPO_DIR" env \
         SSH_PORT="$SSH_PORT" \
         ALLOW_PORTS="$ALLOW_PORTS" \
+        AUTO_ALLOW_LISTENING_PORTS="$AUTO_ALLOW_LISTENING_PORTS" \
+        AUTO_ALLOW_EXCLUDE_PORTS="$AUTO_ALLOW_EXCLUDE_PORTS" \
         HARDEN_SSH="$HARDEN_SSH" \
         DISABLE_PASSWORD_AUTH="$DISABLE_PASSWORD_AUTH" \
         bash ./setup_security.sh

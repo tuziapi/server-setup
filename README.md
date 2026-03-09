@@ -44,6 +44,8 @@ curl -fsSL https://raw.githubusercontent.com/tuziapi/server-setup/main/install.s
 - `nginx` 步骤需要 `--config-file` 或 `--config-url`。
 - `nginx` 是安装步骤参数，必须放在 `bash -s --` 后，不要写成 `nginx curl ...`。
 - `install.sh` 会自动选择目标用户（用于 aliases/docker/node），如需覆盖可设置环境变量 `TARGET_USER`。
+- `security` 步骤默认会自动放行当前正在对外监听的端口，避免启用 UFW 后业务不可访问。
+- 如需关闭自动放行，可加 `--disable-auto-allow-listening` 并手动用 `--allow-ports` 指定端口。
 
 如果你不是 root，可用：
 
@@ -58,7 +60,7 @@ su -c 'curl -fsSL https://raw.githubusercontent.com/tuziapi/server-setup/main/in
 | `install.sh` | 远程引导脚本：下载仓库压缩包并执行步骤（无需 clone） | `curl -fsSL .../install.sh \| bash -s -- all` |
 | `setup_base.sh` | 安装基础软件（curl/git/jq/tmux/ufw/fail2ban 等）并拉起常用服务 | `bash setup_base.sh` |
 | `setup_aliases.sh` | 为用户写入 `~/.server_aliases`，自动接入 `.bashrc/.zshrc` | `TARGET_USER=your_user bash setup_aliases.sh` |
-| `setup_security.sh` | 配置 UFW + fail2ban，支持可选 SSH 加固 | `SSH_PORT=22 ALLOW_PORTS=80,443 bash setup_security.sh` |
+| `setup_security.sh` | 配置 UFW + fail2ban，默认自动放行当前监听端口，支持 SSH 加固 | `SSH_PORT=22 ALLOW_PORTS=80,443 bash setup_security.sh` |
 | `setup_docker.sh` | 使用 Docker 官方安装脚本安装 Docker | `TARGET_USER=your_user bash setup_docker.sh` |
 | `setup_nodejs.sh` | 使用 nvm 官方安装脚本安装 Node.js（默认 LTS） | `TARGET_USER=your_user bash setup_nodejs.sh` |
 | `setup_nginx_proxy.sh` | 按 `domains.json` 批量配置 Nginx 反向代理，可选自动签发证书 | `bash setup_nginx_proxy.sh --config domains.json --email you@example.com` |
@@ -115,12 +117,41 @@ bash setup_nginx_proxy.sh --config domains.json --email you@example.com
 - `--force`：忽略 `completed=true` 强制重建。
 - `CERTBOT_EMAIL=...`：可用环境变量代替 `--email`。
 
+## 3.1 后续手动放开端口（UFW）
+
+说明：`security` 步骤只会自动放行“执行时已在监听”的端口。后续新上线服务（新端口）需要手动放行。
+
+常用命令：
+
+```bash
+# 查看当前规则
+ufw status numbered
+
+# 放行 TCP 端口（示例：3000）
+ufw allow 3000/tcp
+
+# 放行 UDP 端口（示例：3478）
+ufw allow 3478/udp
+
+# 删除规则（按编号，编号来自 status numbered）
+ufw delete <rule_number>
+
+# 重新加载规则
+ufw reload
+```
+
+建议：
+- 对外服务新开端口后，先 `ufw allow ...` 再对外发布。
+- 只放行业务必需端口，避免暴露不必要服务。
+
 ## 4. 常用环境变量
 
 - `TARGET_USER`：要写入别名/Node 环境/Docker 组的目标用户。
 - `TIMEZONE`：例如 `Asia/Shanghai`，用于 `setup_base.sh`。
 - `SSH_PORT`：SSH 端口，默认 `22`。
 - `ALLOW_PORTS`：额外开放端口，逗号分隔，例如 `80,443,8080/tcp`。
+- `AUTO_ALLOW_LISTENING_PORTS`：是否自动放行当前监听端口，默认 `1`。
+- `AUTO_ALLOW_EXCLUDE_PORTS`：自动放行排除列表，默认 `68/udp,546/udp`。
 - `HARDEN_SSH=1`：启用 SSH 基础加固（`PermitRootLogin prohibit-password`）。
 - `DISABLE_PASSWORD_AUTH=1`：配合 `HARDEN_SSH=1` 禁用 SSH 密码登录。
 - `DOCKER_CHANNEL`：Docker 渠道，默认 `stable`。

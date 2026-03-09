@@ -12,6 +12,9 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
 可选环境变量:
   SSH_PORT=22                  SSH 端口（默认 22）
   ALLOW_PORTS=80,443,8080/tcp  额外开放端口（逗号分隔）
+  AUTO_ALLOW_LISTENING_PORTS=1 自动放行当前对外监听端口（默认 1）
+  AUTO_ALLOW_EXCLUDE_PORTS=68/udp,546/udp
+                               自动放行时要排除的端口（逗号分隔）
   HARDEN_SSH=1                 启用 SSH 基础加固
   DISABLE_PASSWORD_AUTH=1      配合 HARDEN_SSH=1 禁用 SSH 密码登录
 
@@ -25,30 +28,139 @@ require_root
 
 SSH_PORT="${SSH_PORT:-22}"
 ALLOW_PORTS="${ALLOW_PORTS:-}"
+AUTO_ALLOW_LISTENING_PORTS="${AUTO_ALLOW_LISTENING_PORTS:-1}"
+AUTO_ALLOW_EXCLUDE_PORTS="${AUTO_ALLOW_EXCLUDE_PORTS:-68/udp,546/udp}"
 HARDEN_SSH="${HARDEN_SSH:-0}"
 DISABLE_PASSWORD_AUTH="${DISABLE_PASSWORD_AUTH:-0}"
 
 apt_install ufw fail2ban
 
-log "配置 UFW 防火墙 ..."
-ufw default deny incoming
-ufw default allow outgoing
-ufw allow "${SSH_PORT}/tcp"
+normalize_rule() {
+  local raw="$1"
+  local trimmed port proto
+
+  trimmed="$(echo "$raw" | xargs)"
+  [[ -n "$trimmed" ]] || return 1
+
+  if [[ "$trimmed" == */* ]]; then
+    port="${trimmed%/*}"
+    proto="${trimmed#*/}"
+  else
+    port="$trimmed"
+    proto="tcp"
+  fi
+
+  proto="${proto,,}"
+  [[ "$port" =~ ^[0-9]+$ ]] || return 1
+  [[ "$proto" == "tcp" || "$proto" == "udp" ]] || return 1
+
+  printf '%s/%s\n' "$port" "$proto"
+}
+
+detect_listening_rules() {
+  ss -H -lntu | awk '
+    {
+      proto=$1
+      local_addr=$5
+
+      gsub(/^\[/, "", local_addr)
+      gsub(/\]$/, "", local_addr)
+
+      port=local_addr
+      sub(/^.*:/, "", port)
+      if (port !~ /^[0-9]+$/) next
+
+      host=local_addr
+      sub(/:[^:]*$/, "", host)
+      if (host ~ /^(127\.|::1$|localhost$)/) next
+
+      if (proto == "tcp" || proto == "udp") {
+        print port "/" proto
+      }
+    }
+  ' | sort -u
+}
+
+declare -A UFW_RULES=()
+declare -A EXCLUDED_RULES=()
+AUTO_RULES_APPLIED=()
+
+add_rule() {
+  local rule="$1"
+  UFW_RULES["$rule"]=1
+}
+
+build_excluded_rules() {
+  local raw item normalized
+  IFS=',' read -r -a raw <<<"$AUTO_ALLOW_EXCLUDE_PORTS"
+  for item in "${raw[@]}"; do
+    normalized="$(normalize_rule "$item" || true)"
+    [[ -z "$normalized" ]] && continue
+    EXCLUDED_RULES["$normalized"]=1
+  done
+}
+
+is_excluded_rule() {
+  local rule="$1"
+  [[ -n "${EXCLUDED_RULES[$rule]:-}" ]]
+}
+
+normalized_ssh_rule="$(normalize_rule "${SSH_PORT}/tcp" || true)"
+[[ -n "$normalized_ssh_rule" ]] || die "SSH_PORT 无效: $SSH_PORT"
+add_rule "$normalized_ssh_rule"
 
 if [[ -n "$ALLOW_PORTS" ]]; then
   IFS=',' read -r -a extra_ports <<<"$ALLOW_PORTS"
   for raw_port in "${extra_ports[@]}"; do
-    port="$(echo "$raw_port" | xargs)"
-    [[ -z "$port" ]] && continue
-    if [[ "$port" == */* ]]; then
-      ufw allow "$port"
-    else
-      ufw allow "${port}/tcp"
+    normalized="$(normalize_rule "$raw_port" || true)"
+    if [[ -z "$normalized" ]]; then
+      warn "忽略无效端口规则: $raw_port"
+      continue
     fi
+    add_rule "$normalized"
   done
 fi
 
+if [[ "$AUTO_ALLOW_LISTENING_PORTS" == "1" ]]; then
+  if ! has_cmd ss; then
+    warn "未检测到 ss 命令，跳过自动探测监听端口。"
+  else
+    build_excluded_rules
+    while IFS= read -r detected; do
+      [[ -z "$detected" ]] && continue
+      normalized="$(normalize_rule "$detected" || true)"
+      [[ -z "$normalized" ]] && continue
+
+      if is_excluded_rule "$normalized"; then
+        continue
+      fi
+
+      if [[ -z "${UFW_RULES[$normalized]:-}" ]]; then
+        add_rule "$normalized"
+        AUTO_RULES_APPLIED+=("$normalized")
+      fi
+    done < <(detect_listening_rules)
+  fi
+fi
+
+log "配置 UFW 防火墙 ..."
+ufw default deny incoming
+ufw default allow outgoing
+
+mapfile -t sorted_rules < <(printf '%s\n' "${!UFW_RULES[@]}" | sort)
+for rule in "${sorted_rules[@]}"; do
+  ufw allow "$rule"
+done
+
 ufw --force enable
+
+if [[ "$AUTO_ALLOW_LISTENING_PORTS" == "1" ]]; then
+  if [[ "${#AUTO_RULES_APPLIED[@]}" -gt 0 ]]; then
+    log "已自动放行当前监听端口: ${AUTO_RULES_APPLIED[*]}"
+  else
+    log "未检测到需要自动新增放行的监听端口。"
+  fi
+fi
 
 log "配置 fail2ban（SSH 防爆破）..."
 mkdir -p /etc/fail2ban/jail.d
