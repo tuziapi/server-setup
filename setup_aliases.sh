@@ -77,6 +77,21 @@ if [[ "$EUID" -eq 0 ]]; then
   chown "$TARGET_USER:$TARGET_USER" "$ALIAS_FILE" "$TARGET_HOME/.bashrc" "$TARGET_HOME/.zshrc"
 fi
 
+reload_aliases_for_target_user() {
+  if [[ "$EUID" -eq 0 && "$TARGET_USER" != "$CURRENT_USER" ]]; then
+    su - "$TARGET_USER" -c "bash -lc 'source ~/.bashrc >/dev/null 2>&1 || true; source ~/.server_aliases >/dev/null 2>&1 || true'" \
+      || warn "自动加载别名失败（用户: $TARGET_USER），下次登录会自动生效。"
+  else
+    # shellcheck disable=SC1090
+    source "$TARGET_HOME/.bashrc" >/dev/null 2>&1 || true
+    # shellcheck disable=SC1090
+    source "$ALIAS_FILE" >/dev/null 2>&1 || true
+  fi
+}
+
+log "自动加载 shell 配置（source ~/.bashrc && source ~/.server_aliases）..."
+reload_aliases_for_target_user
+
 log "配置 Git 别名 ..."
 tmp_git_script="$(mktemp)"
 cat >"$tmp_git_script" <<'EOF'
@@ -107,4 +122,4 @@ else
 fi
 rm -f "$tmp_git_script"
 
-log "别名配置完成。重新登录或执行 'source ~/.bashrc' / 'source ~/.zshrc' 生效。"
+log "别名配置完成。当前执行已自动加载；新终端会话也会自动生效。"
