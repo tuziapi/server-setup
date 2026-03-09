@@ -26,6 +26,12 @@ curl -fsSL https://raw.githubusercontent.com/tuziapi/server-setup/main/install.s
 curl -fsSL https://raw.githubusercontent.com/tuziapi/server-setup/main/install.sh | bash -s -- all
 ```
 
+只配置别名：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/tuziapi/server-setup/main/install.sh | bash -s -- aliases
+```
+
 只执行指定步骤：
 
 ```bash

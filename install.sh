@@ -18,7 +18,7 @@ usage() {
   cat <<'EOF'
 用法:
   bash install.sh                           # 默认步骤: base aliases security docker
-  bash install.sh all                       # 全量步骤: base aliases security docker node
+  bash install.sh all                       # 等价于: base aliases security docker node（不含 nginx）
   bash install.sh base aliases node         # 执行指定步骤
   bash install.sh nginx --config-file /root/domains.json --certbot-email you@example.com
 
@@ -326,6 +326,8 @@ if [[ -n "$CONFIG_URL" ]]; then
   log "下载 nginx 配置: $CONFIG_URL"
   curl -fsSL "$CONFIG_URL" -o "$CONFIG_FILE"
 fi
+
+log "执行步骤: ${STEPS[*]}"
 
 for step in "${STEPS[@]}"; do
   log "开始步骤: $step"
