@@ -117,7 +117,18 @@ interactive_menu() {
   printf "\n"
 
   local choice
-  read -p "请输入选项 [2]: " choice
+  # Setup input source for read commands
+  # fd 3 will be used for reading user input
+  if [[ -t 0 ]]; then
+    exec 3<&0
+  elif [[ -e /dev/tty ]]; then
+    exec 3</dev/tty
+  else
+    warn "无交互终端，无法显示菜单。"
+    exit 1
+  fi
+
+  read -u 3 -p "请输入选项 [2]: " choice
   choice="${choice:-2}"
 
   case "$choice" in
@@ -130,7 +141,7 @@ interactive_menu() {
     7)
        printf "\n请选择步骤 (空格分隔，例如: base docker):\n"
        printf "可用步骤: base aliases security docker node nginx nezha\n"
-       read -p "> " -a custom_steps
+       read -u 3 -p "> " -a custom_steps
        STEPS=("${custom_steps[@]}")
        ;;
     0) exit 0 ;;
@@ -141,7 +152,7 @@ interactive_menu() {
   if [[ "${STEPS[*]}" =~ "nginx" ]]; then
      if [[ -z "$CONFIG_FILE" && -z "$CONFIG_URL" ]]; then
         printf "\n${YELLOW}检测到 Nginx 安装，需要配置信息:${NC}\n"
-        read -p "请输入 domains.json 路径或 URL: " nginx_conf
+        read -u 3 -p "请输入 domains.json 路径或 URL: " nginx_conf
         if [[ "$nginx_conf" =~ ^https?:// ]]; then
            CONFIG_URL="$nginx_conf"
            save_env_var "CONFIG_URL" "$CONFIG_URL"
@@ -152,7 +163,7 @@ interactive_menu() {
 
         if [[ "$NO_SSL" -eq 0 ]]; then
              if [[ -z "$CERTBOT_EMAIL" ]]; then
-                 read -p "请输入 Certbot 邮箱 (SSL证书用): " CERTBOT_EMAIL
+                 read -u 3 -p "请输入 Certbot 邮箱 (SSL证书用): " CERTBOT_EMAIL
                  save_env_var "CERTBOT_EMAIL" "$CERTBOT_EMAIL"
              fi
         fi
@@ -163,14 +174,17 @@ interactive_menu() {
   if [[ "${STEPS[*]}" =~ "nezha" ]]; then
      if [[ -z "$NZ_SERVER" ]]; then
         printf "\n${YELLOW}检测到 Nezha 安装，需要配置信息:${NC}\n"
-        read -p "Nezha Server (host:port): " NZ_SERVER
+        read -u 3 -p "Nezha Server (host:port): " NZ_SERVER
         save_env_var "NZ_SERVER" "$NZ_SERVER"
      fi
      if [[ -z "$NZ_CLIENT_SECRET" ]]; then
-        read -p "Nezha Client Secret: " NZ_CLIENT_SECRET
+        read -u 3 -p "Nezha Client Secret: " NZ_CLIENT_SECRET
         save_env_var "NZ_CLIENT_SECRET" "$NZ_CLIENT_SECRET"
      fi
   fi
+  
+  # Close fd 3
+  exec 3<&-
 }
 
 require_value() {
@@ -392,10 +406,6 @@ done
 if [[ "${#STEPS[@]}" -eq 0 ]]; then
   # Check if running interactively or if /dev/tty is available
   if [[ -t 0 ]] || [[ -e /dev/tty ]]; then
-    # Re-open stdin from /dev/tty if needed
-    if ! [[ -t 0 ]]; then
-      exec 0</dev/tty
-    fi
     interactive_menu
   else
     STEPS=(base aliases security docker)
