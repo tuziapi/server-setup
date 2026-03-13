@@ -390,7 +390,12 @@ while [[ "$#" -gt 0 ]]; do
 done
 
 if [[ "${#STEPS[@]}" -eq 0 ]]; then
-  if [[ -t 0 ]]; then
+  # Check if running interactively or if /dev/tty is available
+  if [[ -t 0 ]] || [[ -e /dev/tty ]]; then
+    # Re-open stdin from /dev/tty if needed
+    if ! [[ -t 0 ]]; then
+      exec 0</dev/tty
+    fi
     interactive_menu
   else
     STEPS=(base aliases security docker)
