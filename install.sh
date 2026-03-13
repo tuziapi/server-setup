@@ -1,29 +1,33 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Colors
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+NC='\033[0m' # No Color
+
 log() {
   printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"
 }
 
 warn() {
-  printf '[%s] [WARN] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >&2
+  printf "${YELLOW}[%s] [WARN] %s${NC}\n" "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >&2
 }
 
 die() {
-  printf '[%s] [ERROR] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >&2
+  printf "${RED}[%s] [ERROR] %s${NC}\n" "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >&2
   exit 1
 }
 
 usage() {
   cat <<'EOF'
 用法:
-  bash install.sh                           # 默认步骤: base aliases security docker
-  bash install.sh all                       # 等价于: base aliases security docker node（不含 nginx）
-  bash install.sh base aliases node         # 执行指定步骤
-  bash install.sh nginx --config-file /root/domains.json --certbot-email you@example.com
+  bash install.sh                           # 交互式菜单（如果无参数且在终端中）
+  bash install.sh base aliases security     # 自动安装指定步骤
 
 支持步骤:
-  base aliases security docker node nginx all
+  base aliases security docker node nginx nezha all
 
 常用参数:
   --repo <owner/repo>          GitHub 仓库（默认: tuziapi/server-setup）
@@ -50,11 +54,123 @@ usage() {
   --dry-run                     仅输出计划，不实际执行
   -h, --help                    查看帮助
 
+环境变量:
+  支持从当前目录下的 .env 文件加载环境变量。
+  NZ_SERVER                     哪吒监控 Server 地址
+  NZ_CLIENT_SECRET              哪吒监控 Client Secret
+  NZ_TLS                        哪吒监控 TLS (true/false)
+
 示例（无需 clone）:
   curl -fsSL https://raw.githubusercontent.com/tuziapi/server-setup/main/install.sh | bash
   curl -fsSL https://raw.githubusercontent.com/tuziapi/server-setup/main/install.sh | bash -s -- all
   # 非 root 可改用: su -c '... | bash'（有 sudo 也可用 sudo bash）
 EOF
+}
+
+# Load .env file if exists
+if [[ -f .env ]]; then
+  # shellcheck disable=SC1091
+  source .env
+fi
+
+# Function to save environment variables to .env file
+save_env_var() {
+  local key="$1"
+  local value="$2"
+  
+  if [[ -z "$value" ]]; then
+    return
+  fi
+
+  if [[ ! -f .env ]]; then
+    touch .env
+  fi
+
+  # Escape special characters for sed
+  local escaped_value
+  escaped_value=$(printf '%s\n' "$value" | sed -e 's/[\/&]/\\&/g')
+
+  if grep -q "^${key}=" .env; then
+    # Update existing key
+    sed -i "s/^${key}=.*/${key}=${escaped_value}/" .env
+  else
+    # Append new key
+    echo "${key}=${value}" >> .env
+  fi
+}
+
+interactive_menu() {
+  clear
+  printf "${GREEN}========================================${NC}\n"
+  printf "${GREEN}   服务器初始化安装脚本${NC}\n"
+  printf "${GREEN}========================================${NC}\n"
+  printf "\n"
+  printf "请选择安装场景:\n"
+  printf "  ${YELLOW}1)${NC} 基础环境 (Base + Aliases + Security)\n"
+  printf "  ${YELLOW}2)${NC} Docker 环境 (推荐, 含基础)\n"
+  printf "  ${YELLOW}3)${NC} Node.js 环境 (含基础)\n"
+  printf "  ${YELLOW}4)${NC} 全功能环境 (Docker + Node + 基础)\n"
+  printf "  ${YELLOW}5)${NC} Web 服务环境 (Docker + Nginx + 基础)\n"
+  printf "  ${YELLOW}6)${NC} 监控代理 (Nezha Agent)\n"
+  printf "  ${YELLOW}7)${NC} 自定义选择\n"
+  printf "  ${YELLOW}0)${NC} 退出\n"
+  printf "\n"
+
+  local choice
+  read -p "请输入选项 [2]: " choice
+  choice="${choice:-2}"
+
+  case "$choice" in
+    1) STEPS=(base aliases security) ;;
+    2) STEPS=(base aliases security docker) ;;
+    3) STEPS=(base aliases security node) ;;
+    4) STEPS=(base aliases security docker node) ;;
+    5) STEPS=(base aliases security docker nginx) ;;
+    6) STEPS=(nezha) ;;
+    7)
+       printf "\n请选择步骤 (空格分隔，例如: base docker):\n"
+       printf "可用步骤: base aliases security docker node nginx nezha\n"
+       read -p "> " -a custom_steps
+       STEPS=("${custom_steps[@]}")
+       ;;
+    0) exit 0 ;;
+    *) die "无效选项" ;;
+  esac
+
+  # Check for Nginx requirements
+  if [[ "${STEPS[*]}" =~ "nginx" ]]; then
+     if [[ -z "$CONFIG_FILE" && -z "$CONFIG_URL" ]]; then
+        printf "\n${YELLOW}检测到 Nginx 安装，需要配置信息:${NC}\n"
+        read -p "请输入 domains.json 路径或 URL: " nginx_conf
+        if [[ "$nginx_conf" =~ ^https?:// ]]; then
+           CONFIG_URL="$nginx_conf"
+           save_env_var "CONFIG_URL" "$CONFIG_URL"
+        else
+           CONFIG_FILE="$nginx_conf"
+           save_env_var "CONFIG_FILE" "$CONFIG_FILE"
+        fi
+
+        if [[ "$NO_SSL" -eq 0 ]]; then
+             if [[ -z "$CERTBOT_EMAIL" ]]; then
+                 read -p "请输入 Certbot 邮箱 (SSL证书用): " CERTBOT_EMAIL
+                 save_env_var "CERTBOT_EMAIL" "$CERTBOT_EMAIL"
+             fi
+        fi
+     fi
+  fi
+
+  # Check for Nezha requirements
+  if [[ "${STEPS[*]}" =~ "nezha" ]]; then
+     if [[ -z "$NZ_SERVER" ]]; then
+        printf "\n${YELLOW}检测到 Nezha 安装，需要配置信息:${NC}\n"
+        read -p "Nezha Server (host:port): " NZ_SERVER
+        save_env_var "NZ_SERVER" "$NZ_SERVER"
+     fi
+     if [[ -z "$NZ_CLIENT_SECRET" ]]; then
+        read -p "Nezha Client Secret: " NZ_CLIENT_SECRET
+        save_env_var "NZ_CLIENT_SECRET" "$NZ_CLIENT_SECRET"
+     fi
+  fi
 }
 
 require_value() {
@@ -65,7 +181,7 @@ require_value() {
 
 validate_step() {
   case "$1" in
-    base|aliases|security|docker|node|nginx) return 0 ;;
+    base|aliases|security|docker|node|nginx|nezha) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -146,6 +262,10 @@ CONFIG_URL="${CONFIG_URL:-}"
 CERTBOT_EMAIL="${CERTBOT_EMAIL:-}"
 NO_SSL=0
 FORCE_NGINX=0
+
+NZ_SERVER="${NZ_SERVER:-}"
+NZ_TLS="${NZ_TLS:-false}"
+NZ_CLIENT_SECRET="${NZ_CLIENT_SECRET:-}"
 
 STEPS=()
 
@@ -270,7 +390,11 @@ while [[ "$#" -gt 0 ]]; do
 done
 
 if [[ "${#STEPS[@]}" -eq 0 ]]; then
-  STEPS=(base aliases security docker)
+  if [[ -t 0 ]]; then
+    interactive_menu
+  else
+    STEPS=(base aliases security docker)
+  fi
 elif [[ "${#STEPS[@]}" -eq 1 && "${STEPS[0]}" == "all" ]]; then
   STEPS=(base aliases security docker node)
 fi
@@ -375,6 +499,13 @@ for step in "${STEPS[@]}"; do
         nginx_cmd+=(--force)
       fi
       run_dir_cmd "$REPO_DIR" "${nginx_cmd[@]}"
+      ;;
+    nezha)
+      run_dir_cmd "$REPO_DIR" env \
+        NZ_SERVER="$NZ_SERVER" \
+        NZ_TLS="$NZ_TLS" \
+        NZ_CLIENT_SECRET="$NZ_CLIENT_SECRET" \
+        bash ./setup_nezha.sh
       ;;
   esac
   log "完成步骤: $step"

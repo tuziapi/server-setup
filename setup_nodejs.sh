@@ -69,9 +69,20 @@ nvm alias default "$NODE_VERSION"
 node -v
 npm -v
 
-echo "Installing Claude Code and Statusline Plugin..."
-npm install -g https://gaccode.com/claudecode/install --registry=https://registry.npmmirror.com
-npm i -g https://gaccode.com/claudecode/install/statusline-plugin --registry=https://registry.npmmirror.com/
+if ! command -v claudecode >/dev/null 2>&1; then
+  echo "Installing Claude Code and Statusline Plugin..."
+  npm install -g https://gaccode.com/claudecode/install --registry=https://registry.npmmirror.com
+  npm i -g https://gaccode.com/claudecode/install/statusline-plugin --registry=https://registry.npmmirror.com/
+else
+  echo "Claude Code already installed."
+fi
+
+if ! command -v codex >/dev/null 2>&1; then
+  echo "Installing Codex..."
+  npm install -g https://gaccode.com/codex/install
+else
+  echo "Codex already installed."
+fi
 EOF
 
 chmod 755 "$tmp_script"

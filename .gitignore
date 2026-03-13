@@ -9,7 +9,6 @@
 
 # Environment
 .env
-.env.*
 
 # Runtime artifacts
 *.log
