@@ -33,7 +33,7 @@ AUTO_ALLOW_EXCLUDE_PORTS="${AUTO_ALLOW_EXCLUDE_PORTS:-68/udp,546/udp}"
 HARDEN_SSH="${HARDEN_SSH:-0}"
 DISABLE_PASSWORD_AUTH="${DISABLE_PASSWORD_AUTH:-0}"
 
-apt_install ufw fail2ban
+apt_install ufw fail2ban iproute2
 
 normalize_rule() {
   local raw="$1"
@@ -121,6 +121,53 @@ is_excluded_rule() {
 normalized_ssh_rule="$(normalize_rule "${SSH_PORT}/tcp" || true)"
 [[ -n "$normalized_ssh_rule" ]] || die "SSH_PORT 无效: $SSH_PORT"
 add_rule "$normalized_ssh_rule"
+
+auto_detect_ssh_ports() {
+  local detected_ports=()
+  local port
+
+  # 1. 优先：当前 SSH 会话端口（保命措施）
+  if [[ -n "${SSH_CONNECTION:-}" ]]; then
+    port=$(echo "$SSH_CONNECTION" | awk '{print $4}')
+    if [[ -n "$port" && "$port" =~ ^[0-9]+$ ]]; then
+      log "检测到当前 SSH 会话端口: $port"
+      detected_ports+=("$port")
+    fi
+  fi
+
+  # 2. 其次：sshd 进程实际监听的端口
+  if has_cmd ss; then
+    # 提取 sshd 监听的 TCP 端口
+    # ss 输出示例: LISTEN 0 128 0.0.0.0:22 users:(("sshd",pid=...))
+    # 注意：awk -F: 在 IPv6 [::]:22 这种情况下需要小心处理，但通常 ss -tlnp 输出格式较固定
+    # 这里使用更稳健的解析方式
+    while read -r line; do
+      # 匹配 :端口号 后跟空格或行尾
+      if [[ "$line" =~ :([0-9]+)[[:space:]]+.*users:.*\"sshd\" ]]; then
+        detected_ports+=("${BASH_REMATCH[1]}")
+      fi
+    done < <(ss -tlnp)
+  fi
+
+  # 去重并添加规则
+  if [[ "${#detected_ports[@]}" -gt 0 ]]; then
+    local unique_ports
+    unique_ports=$(printf "%s\n" "${detected_ports[@]}" | sort -u)
+    
+    for p in $unique_ports; do
+      local normalized
+      normalized="$(normalize_rule "${p}/tcp" || true)"
+      if [[ -n "$normalized" && -z "${UFW_RULES[$normalized]:-}" ]]; then
+        log "自动放行检测到的 SSH 端口: $p"
+        add_rule "$normalized"
+      fi
+    done
+  else
+    warn "未能自动检测到运行中的 SSH 端口，请确保 SSH_PORT=$SSH_PORT 配置正确。"
+  fi
+}
+
+auto_detect_ssh_ports
 
 if [[ -n "$ALLOW_PORTS" ]]; then
   IFS=',' read -r -a extra_ports <<<"$ALLOW_PORTS"
