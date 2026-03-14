@@ -11,12 +11,13 @@ usage() {
   bash setup_all.sh base aliases   # 仅执行指定步骤
 
 可选步骤:
-  base aliases security docker node nginx
+  base aliases security docker node nginx ufw
 
 说明:
   1) 除 aliases/node（针对当前用户）外，其他步骤通常需要 root。
   2) 建议传入 TARGET_USER=你的用户名（例如 TARGET_USER=your_user）。
   3) 执行 nginx 步骤时，需准备 domains.json，且默认要求 CERTBOT_EMAIL。
+  4) security 步骤仅包含 fail2ban/ssh 加固，不再默认包含 ufw。如需防火墙，请显式添加 ufw 步骤。
 EOF
 }
 
@@ -28,6 +29,7 @@ script_for_step() {
     docker) echo "setup_docker.sh" ;;
     node) echo "setup_nodejs.sh" ;;
     nginx) echo "setup_nginx_proxy.sh" ;;
+    ufw) echo "setup_ufw.sh" ;;
     *) return 1 ;;
   esac
 }

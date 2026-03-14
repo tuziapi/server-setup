@@ -50,7 +50,9 @@ curl -fsSL https://raw.githubusercontent.com/tuziapi/server-setup/main/install.s
 - `nginx` 步骤需要 `--config-file` 或 `--config-url`。
 - `nginx` 是安装步骤参数，必须放在 `bash -s --` 后，不要写成 `nginx curl ...`。
 - `install.sh` 会自动选择目标用户（用于 aliases/docker/node），如需覆盖可设置环境变量 `TARGET_USER`。
-- `security` 步骤默认会自动放行当前正在对外监听的端口，避免启用 UFW 后业务不可访问。
+- `security` 步骤仅配置 `fail2ban` 和 SSH 加固，**不包含 UFW**。
+- 如需启用防火墙，请显式添加 `ufw` 步骤（例如 `bash setup_all.sh ... ufw`）。
+- `ufw` 步骤默认会自动放行当前正在对外监听的端口，避免启用 UFW 后业务不可访问。
 - 自动放行基于 `ss -lntup` 探测，仅对非 `127.0.0.1`/`::1` 监听端口生效（本机回环端口不会放行）。
 - 如需关闭自动放行，可加 `--disable-auto-allow-listening` 并手动用 `--allow-ports` 指定端口。
 
@@ -67,7 +69,8 @@ su -c 'curl -fsSL https://raw.githubusercontent.com/tuziapi/server-setup/main/in
 | `install.sh` | 远程引导脚本：下载仓库压缩包并执行步骤（无需 clone） | `curl -fsSL .../install.sh \| bash -s -- all` |
 | `setup_base.sh` | 安装基础软件（curl/git/jq/tmux/ufw/fail2ban 等）并拉起常用服务 | `bash setup_base.sh` |
 | `setup_aliases.sh` | 为用户写入 `~/.server_aliases`，自动接入 `.bashrc/.zshrc` | `TARGET_USER=your_user bash setup_aliases.sh` |
-| `setup_security.sh` | 配置 UFW + fail2ban，默认自动放行当前监听端口，支持 SSH 加固 | `SSH_PORT=22 ALLOW_PORTS=80,443 bash setup_security.sh` |
+| `setup_security.sh` | 配置 fail2ban + SSH 加固（不含 UFW） | `SSH_PORT=22 bash setup_security.sh` |
+| `setup_ufw.sh` | 配置 UFW 防火墙，默认自动放行监听端口 | `SSH_PORT=22 ALLOW_PORTS=80,443 bash setup_ufw.sh` |
 | `setup_docker.sh` | 使用 Docker 官方安装脚本安装 Docker | `TARGET_USER=your_user bash setup_docker.sh` |
 | `setup_nodejs.sh` | 使用 nvm 官方安装脚本安装 Node.js（默认 LTS） | `TARGET_USER=your_user bash setup_nodejs.sh` |
 | `setup_nginx_proxy.sh` | 按 `domains.json` 批量配置 Nginx 反向代理，可选自动签发证书 | `bash setup_nginx_proxy.sh --config domains.json --email you@example.com` |
@@ -79,10 +82,11 @@ su -c 'curl -fsSL https://raw.githubusercontent.com/tuziapi/server-setup/main/in
 
 1. `bash setup_base.sh`
 2. `TARGET_USER=your_user bash setup_aliases.sh`
-3. `SSH_PORT=22 ALLOW_PORTS=80,443 bash setup_security.sh`
-4. `TARGET_USER=your_user bash setup_docker.sh`
-5. `TARGET_USER=your_user bash setup_nodejs.sh`（如需 Node.js）
-6. `bash setup_nginx_proxy.sh --config domains.json --email you@example.com`（如需反代 + SSL）
+3. `SSH_PORT=22 bash setup_security.sh`
+4. `SSH_PORT=22 ALLOW_PORTS=80,443 bash setup_ufw.sh`（可选，建议在确认 SSH 连接无误后执行）
+5. `TARGET_USER=your_user bash setup_docker.sh`
+6. `TARGET_USER=your_user bash setup_nodejs.sh`（如需 Node.js）
+7. `bash setup_nginx_proxy.sh --config domains.json --email you@example.com`（如需反代 + SSL）
 
 如果想一次执行（不含 nginx）：
 
@@ -124,9 +128,10 @@ bash setup_nginx_proxy.sh --config domains.json --email you@example.com
 - `--force`：忽略 `completed=true` 强制重建。
 - `CERTBOT_EMAIL=...`：可用环境变量代替 `--email`。
 
-## 3.1 后续手动放开端口（UFW）
+## 3.1 后续手动放开端口（UFW - 若已启用）
 
-说明：`security` 步骤只会自动放行“执行时已在监听”的端口。后续新上线服务（新端口）需要手动放行。
+说明：`ufw` 步骤才会启用防火墙。如果你没有执行 `ufw` 步骤，则无需进行此操作。
+`ufw` 步骤只会自动放行“执行时已在监听”的端口。后续新上线服务（新端口）需要手动放行。
 
 常用命令：
 
@@ -157,9 +162,9 @@ ufw reload
 - `TARGET_USER`：要写入别名/Node 环境/Docker 组的目标用户。
 - `TIMEZONE`：例如 `Asia/Shanghai`，用于 `setup_base.sh`。
 - `SSH_PORT`：SSH 端口，默认 `22`。
-- `ALLOW_PORTS`：额外开放端口，逗号分隔，例如 `80,443,8080/tcp`。
-- `AUTO_ALLOW_LISTENING_PORTS`：是否自动放行当前监听端口，默认 `1`。
-- `AUTO_ALLOW_EXCLUDE_PORTS`：自动放行排除列表，默认 `68/udp,546/udp`。
+- `ALLOW_PORTS`：(仅 ufw) 额外开放端口，逗号分隔，例如 `80,443,8080/tcp`。
+- `AUTO_ALLOW_LISTENING_PORTS`：(仅 ufw) 是否自动放行当前监听端口，默认 `1`。
+- `AUTO_ALLOW_EXCLUDE_PORTS`：(仅 ufw) 自动放行排除列表，默认 `68/udp,546/udp`。
 - `HARDEN_SSH=1`：启用 SSH 基础加固（`PermitRootLogin prohibit-password`）。
 - `DISABLE_PASSWORD_AUTH=1`：配合 `HARDEN_SSH=1` 禁用 SSH 密码登录。
 - `DOCKER_CHANNEL`：Docker 渠道，默认 `stable`。

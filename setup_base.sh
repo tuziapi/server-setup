@@ -41,7 +41,6 @@ PACKAGES=(
   gnupg
   lsb-release
   software-properties-common
-  ufw
   fail2ban
   cron
 )
