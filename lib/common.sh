@@ -53,7 +53,7 @@ apt_update_once() {
     tmp_log="$(mktemp)"
     # 不立即 die，先捕获退出状态以便检测 NodeSource 签名问题
     local rc=0
-    apt-get update -y 2>&1 | tee "$tmp_log" || rc=$?
+    apt-get update -y >"$tmp_log" 2>&1 || rc=$?
 
     # Debian trixie/sqv 在 2026-02 后会拒绝带 SHA1 绑定签名的旧 NodeSource 源。
     if grep -q 'deb.nodesource.com' "$tmp_log" && grep -Eq 'SHA1|sqv|Signing key .* not bound' "$tmp_log"; then
