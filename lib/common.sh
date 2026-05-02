@@ -51,22 +51,30 @@ apt_update_once() {
     log "执行 apt-get update ..."
     local tmp_log
     tmp_log="$(mktemp)"
-    if ! apt-get update -y 2>&1 | tee "$tmp_log"; then
-      rm -f "$tmp_log"
-      die "apt-get update 失败，请检查网络和软件源配置。"
-    fi
+    # 不立即 die，先捕获退出状态以便检测 NodeSource 签名问题
+    local rc=0
+    apt-get update -y 2>&1 | tee "$tmp_log" || rc=$?
 
     # Debian trixie/sqv 在 2026-02 后会拒绝带 SHA1 绑定签名的旧 NodeSource 源。
     if grep -q 'deb.nodesource.com' "$tmp_log" && grep -Eq 'SHA1|sqv|Signing key .* not bound' "$tmp_log"; then
       warn "检测到 NodeSource 源签名不被当前策略接受，尝试自动禁用该源并重试 apt-get update。"
       if disable_nodesource_repo; then
-        apt-get update -y
+        if ! apt-get update -y; then
+          rm -f "$tmp_log"
+          die "apt-get update 失败，请检查网络和软件源配置。"
+        fi
+        rc=0
       else
         warn "未能定位 NodeSource 源文件，请手动检查 /etc/apt/sources.list(.d)。"
       fi
     fi
 
     rm -f "$tmp_log"
+
+    if [[ "$rc" -ne 0 ]]; then
+      die "apt-get update 失败，请检查网络和软件源配置。"
+    fi
+
     apt_updated=1
   fi
 }
