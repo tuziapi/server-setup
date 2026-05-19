@@ -78,6 +78,15 @@ if [[ "$EUID" -eq 0 ]]; then
   chown "$TARGET_USER:$TARGET_USER" "$ALIAS_FILE" "$TARGET_HOME/.bashrc" "$TARGET_HOME/.zshrc"
 fi
 
+if [[ "$EUID" -eq 0 && "$TARGET_USER" != "root" ]]; then
+  log "同时为 root 用户写入别名 ..."
+  cp "$ALIAS_FILE" /root/.server_aliases
+  for shell_rc in ".bashrc" ".zshrc"; do
+    touch "/root/$shell_rc"
+    append_once '[[ -f ~/.server_aliases ]] && source ~/.server_aliases' "/root/$shell_rc"
+  done
+fi
+
 reload_aliases_for_target_user() {
   if [[ "$EUID" -eq 0 && "$TARGET_USER" != "$CURRENT_USER" ]]; then
     if [[ "$TARGET_SHELL" == */zsh ]]; then

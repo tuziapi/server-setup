@@ -100,6 +100,19 @@ save_env_var() {
 }
 
 interactive_menu() {
+  local choice
+
+  # Check tty availability before printing the menu
+  if [[ -t 0 ]]; then
+    exec 3<&0
+  elif (exec 3</dev/tty) 2>/dev/null; then
+    exec 3</dev/tty
+  else
+    warn "无交互终端，无法显示菜单，使用默认步骤: base aliases security docker"
+    STEPS=(base aliases security docker)
+    return 0
+  fi
+
   clear
   printf "${GREEN}========================================${NC}\n"
   printf "${GREEN}   服务器初始化安装脚本${NC}\n"
@@ -115,18 +128,6 @@ interactive_menu() {
   printf "  ${YELLOW}7)${NC} 自定义选择\n"
   printf "  ${YELLOW}0)${NC} 退出\n"
   printf "\n"
-
-  local choice
-  # Setup input source for read commands
-  # fd 3 will be used for reading user input
-  if [[ -t 0 ]]; then
-    exec 3<&0
-  elif [[ -e /dev/tty ]]; then
-    exec 3</dev/tty
-  else
-    warn "无交互终端，无法显示菜单。"
-    exit 1
-  fi
 
   read -u 3 -p "请输入选项 [2]: " choice
   choice="${choice:-2}"
