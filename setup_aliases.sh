@@ -87,7 +87,15 @@ if [[ "$EUID" -eq 0 && "$TARGET_USER" != "root" ]]; then
   done
 fi
 
+is_piped_execution() {
+  [[ ! -t 0 && ! -t 1 ]]
+}
+
 reload_aliases_for_target_user() {
+  if is_piped_execution; then
+    return 0
+  fi
+
   if [[ "$EUID" -eq 0 && "$TARGET_USER" != "$CURRENT_USER" ]]; then
     if [[ "$TARGET_SHELL" == */zsh ]]; then
       su - "$TARGET_USER" -c "zsh -lc 'source ~/.zshrc >/dev/null 2>&1 || true; source ~/.server_aliases >/dev/null 2>&1 || true'" \
@@ -107,7 +115,9 @@ reload_aliases_for_target_user() {
   fi
 }
 
-log "自动加载目标用户 shell 配置..."
+if ! is_piped_execution; then
+  log "自动加载目标用户 shell 配置..."
+fi
 reload_aliases_for_target_user
 
 log "配置 Git 别名 ..."
@@ -140,4 +150,10 @@ else
 fi
 rm -f "$tmp_git_script"
 
-log "别名配置完成。若当前终端是父进程（例如 curl | bash 启动），请新开终端会话后使用。"
+if is_piped_execution; then
+  log "别名配置完成。请执行以下命令立即生效:"
+  log "  source ~/.server_aliases"
+  log "或新开终端会话后自动生效。"
+else
+  log "别名配置完成。"
+fi
