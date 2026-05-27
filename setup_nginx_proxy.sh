@@ -21,6 +21,9 @@ usage() {
       --force           忽略 completed=true，强制重建配置
   -h, --help            查看帮助
 
+说明:
+  支持 Debian/Ubuntu、RHEL/CentOS/AlmaLinux/Rocky/Fedora、Alpine、Arch Linux。
+
 domains.json 格式:
 {
   "domains": [
@@ -66,17 +69,36 @@ while [[ "$#" -gt 0 ]]; do
 done
 
 require_root
+detect_os
 
 [[ -f "$JSON_FILE" ]] || die "配置文件不存在: $JSON_FILE"
 jq -e '.domains and (.domains | type == "array")' "$JSON_FILE" >/dev/null || die "JSON 格式错误: $JSON_FILE"
 
-apt_install nginx jq
-if [[ "$ENABLE_SSL" -eq 1 ]]; then
-  [[ -n "$CERTBOT_EMAIL" ]] || die "启用 SSL 时必须传入 --email 或设置 CERTBOT_EMAIL。"
-  apt_install certbot python3-certbot-nginx
+if [[ "$OS_FAMILY" == "rhel" ]]; then
+  ensure_epel
 fi
 
-systemctl enable --now nginx
+pkg_install nginx jq
+
+if [[ "$ENABLE_SSL" -eq 1 ]]; then
+  [[ -n "$CERTBOT_EMAIL" ]] || die "启用 SSL 时必须传入 --email 或设置 CERTBOT_EMAIL。"
+  pkg_install certbot python3-certbot-nginx
+fi
+
+svc_enable_now nginx
+
+# Nginx sites directory setup (RHEL/Alpine/Arch may not have sites-available)
+SITES_AVAILABLE="/etc/nginx/sites-available"
+SITES_ENABLED="/etc/nginx/sites-enabled"
+
+if [[ ! -d "$SITES_AVAILABLE" ]]; then
+  mkdir -p "$SITES_AVAILABLE" "$SITES_ENABLED"
+  if ! grep -q "include.*sites-enabled" /etc/nginx/nginx.conf 2>/dev/null; then
+    if grep -q "http {" /etc/nginx/nginx.conf; then
+      sed -i '/http {/a \    include /etc/nginx/sites-enabled/*.conf;' /etc/nginx/nginx.conf
+    fi
+  fi
+fi
 
 processed=0
 skipped=0
@@ -101,7 +123,7 @@ while IFS= read -r domain_entry; do
   fi
 
   log "配置域名: $domain -> http://$target_host:$target_port"
-  config_path="/etc/nginx/sites-available/${domain}.conf"
+  config_path="${SITES_AVAILABLE}/${domain}.conf"
 
   cat >"$config_path" <<EOF
 server {
@@ -121,8 +143,8 @@ server {
 }
 EOF
 
-  ln -sfn "$config_path" "/etc/nginx/sites-enabled/${domain}.conf"
-  rm -f /etc/nginx/sites-enabled/default
+  ln -sfn "$config_path" "${SITES_ENABLED}/${domain}.conf"
+  rm -f "${SITES_ENABLED}/default"
 
   if ! nginx -t; then
     warn "Nginx 配置校验失败: $domain"
@@ -130,7 +152,7 @@ EOF
     continue
   fi
 
-  systemctl reload nginx
+  svc_reload nginx
 
   if [[ "$ENABLE_SSL" -eq 1 ]]; then
     log "申请证书: $domain"

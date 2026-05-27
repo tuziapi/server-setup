@@ -19,9 +19,12 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
 说明:
   - 为当前用户安装时可直接执行。
   - 为其他用户安装时需要 root 权限（非 root 可先用 su 提权，有 sudo 也可）。
+  - 支持 Debian/Ubuntu、RHEL/CentOS/AlmaLinux/Rocky/Fedora、Alpine、Arch Linux。
 EOF
   exit 0
 fi
+
+detect_os
 
 TARGET_USER="${TARGET_USER:-${SUDO_USER:-$(id -un)}}"
 CURRENT_USER="$(id -un)"
@@ -49,7 +52,7 @@ fi
 
 if ! has_cmd curl; then
   if [[ "$EUID" -eq 0 ]]; then
-    apt_install ca-certificates curl
+    pkg_install ca-certificates curl
   else
     die "缺少 curl，请先安装后重试。"
   fi

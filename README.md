@@ -1,6 +1,13 @@
 # server-setup
 
-面向 Debian/Ubuntu 的服务器初始化脚本集合，覆盖基础环境、别名、安全基线、Docker、Node.js、Nginx 反向代理与 SSL。
+跨发行版服务器初始化脚本集合，覆盖基础环境、别名、安全基线、Docker、Node.js、Nginx 反向代理与 SSL。
+
+支持的发行版：
+- **Debian / Ubuntu**（及衍生版：Linux Mint、Pop!_OS、Kali 等）
+- **RHEL / CentOS / AlmaLinux / Rocky Linux / Oracle Linux**
+- **Fedora**
+- **Alpine Linux**
+- **Arch Linux**（及衍生版：Manjaro、EndeavourOS 等）
 
 设计目标：
 - 直接可执行，尽量幂等。

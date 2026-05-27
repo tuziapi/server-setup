@@ -19,18 +19,31 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
 说明:
   该脚本需要 root 权限；非 root 用户请先用 su 提权（有 sudo 也可）。
   该脚本会安装并启用 UFW 防火墙，请确保 SSH 端口已放行，否则可能导致无法连接。
+  支持 Debian/Ubuntu、RHEL/CentOS/AlmaLinux/Rocky/Fedora、Alpine、Arch Linux。
+  RHEL 系会自动禁用 firewalld 以避免冲突。
 EOF
   exit 0
 fi
 
 require_root
+detect_os
 
 SSH_PORT="${SSH_PORT:-22}"
 ALLOW_PORTS="${ALLOW_PORTS:-}"
 AUTO_ALLOW_LISTENING_PORTS="${AUTO_ALLOW_LISTENING_PORTS:-1}"
 AUTO_ALLOW_EXCLUDE_PORTS="${AUTO_ALLOW_EXCLUDE_PORTS:-68/udp,546/udp}"
 
-apt_install ufw iproute2
+if [[ "$OS_FAMILY" == "rhel" ]]; then
+  ensure_epel
+  if has_cmd firewall-cmd; then
+    log "禁用 firewalld 以避免与 ufw 冲突 ..."
+    systemctl stop firewalld 2>/dev/null || true
+    systemctl disable firewalld 2>/dev/null || true
+    systemctl mask firewalld 2>/dev/null || true
+  fi
+fi
+
+pkg_install ufw iproute2
 
 normalize_rule() {
   local raw="$1"
@@ -123,7 +136,6 @@ auto_detect_ssh_ports() {
   local detected_ports=()
   local port
 
-  # 1. 优先：当前 SSH 会话端口（保命措施）
   if [[ -n "${SSH_CONNECTION:-}" ]]; then
     port=$(echo "$SSH_CONNECTION" | awk '{print $4}')
     if [[ -n "$port" && "$port" =~ ^[0-9]+$ ]]; then
@@ -132,25 +144,18 @@ auto_detect_ssh_ports() {
     fi
   fi
 
-  # 2. 其次：sshd 进程实际监听的端口
   if has_cmd ss; then
-    # 提取 sshd 监听的 TCP 端口
-    # ss 输出示例: LISTEN 0 128 0.0.0.0:22 users:(("sshd",pid=...))
-    # 注意：awk -F: 在 IPv6 [::]:22 这种情况下需要小心处理，但通常 ss -tlnp 输出格式较固定
-    # 这里使用更稳健的解析方式
     while read -r line; do
-      # 匹配 :端口号 后跟空格或行尾
       if [[ "$line" =~ :([0-9]+)[[:space:]]+.*users:.*\"sshd\" ]]; then
         detected_ports+=("${BASH_REMATCH[1]}")
       fi
     done < <(ss -tlnp)
   fi
 
-  # 去重并添加规则
   if [[ "${#detected_ports[@]}" -gt 0 ]]; then
     local unique_ports
     unique_ports=$(printf "%s\n" "${detected_ports[@]}" | sort -u)
-    
+
     for p in $unique_ports; do
       local normalized
       normalized="$(normalize_rule "${p}/tcp" || true)"

@@ -17,31 +17,44 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
 
 说明:
   该脚本需要 root 权限；非 root 用户请先用 su 提权（有 sudo 也可）。
+  支持 Debian/Ubuntu、RHEL/CentOS/AlmaLinux/Rocky/Fedora、Alpine、Arch Linux。
+  Alpine 使用 community 仓库安装 Docker，其他发行版使用官方安装脚本。
 EOF
   exit 0
 fi
 
 require_root
+detect_os
 
 DOCKER_CHANNEL="${DOCKER_CHANNEL:-stable}"
 DOCKER_INSTALL_URL="${DOCKER_INSTALL_URL:-https://get.docker.com}"
 TARGET_USER="${TARGET_USER:-${SUDO_USER:-}}"
 
-apt_install ca-certificates curl
+pkg_install ca-certificates curl
 
-tmp_script="$(mktemp)"
-trap 'rm -f "$tmp_script"' EXIT
+if [[ "$OS_FAMILY" == "alpine" ]]; then
+  log "通过 apk 安装 Docker ..."
+  apk add --no-cache docker docker-compose
+  svc_enable_now docker
+elif [[ "$OS_FAMILY" == "arch" ]]; then
+  log "通过 pacman 安装 Docker ..."
+  pacman -S --noconfirm --needed docker docker-compose
+  systemctl enable --now docker
+else
+  tmp_script="$(mktemp)"
+  trap 'rm -f "$tmp_script"' EXIT
 
-log "下载 Docker 官方安装脚本: $DOCKER_INSTALL_URL"
-curl -fsSL "$DOCKER_INSTALL_URL" -o "$tmp_script"
+  log "下载 Docker 官方安装脚本: $DOCKER_INSTALL_URL"
+  curl -fsSL "$DOCKER_INSTALL_URL" -o "$tmp_script"
 
-log "安装 Docker（channel=$DOCKER_CHANNEL）..."
-sh "$tmp_script" --channel "$DOCKER_CHANNEL"
+  log "安装 Docker（channel=$DOCKER_CHANNEL）..."
+  sh "$tmp_script" --channel "$DOCKER_CHANNEL"
 
-systemctl enable --now docker
+  systemctl enable --now docker
+fi
 
 if [[ -n "$TARGET_USER" && "$TARGET_USER" != "root" ]]; then
-  usermod -aG docker "$TARGET_USER"
+  usermod -aG docker "$TARGET_USER" 2>/dev/null || addgroup "$TARGET_USER" docker 2>/dev/null || true
   log "已将用户 $TARGET_USER 加入 docker 组（重新登录后生效）。"
 fi
 
