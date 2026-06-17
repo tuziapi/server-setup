@@ -6,18 +6,20 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 usage() {
   cat <<'EOF'
 用法:
-  bash setup_all.sh                # 默认执行: base aliases security docker
-  bash setup_all.sh all            # 执行: base aliases security docker node
+  bash setup_all.sh                # 默认执行: base aliases security incident docker
+  bash setup_all.sh all            # 执行: base aliases security incident docker node
   bash setup_all.sh base aliases   # 仅执行指定步骤
 
 可选步骤:
-  base aliases security docker node nginx ufw
+  base aliases security incident remediate docker node nginx ufw nezha
 
 说明:
   1) 除 aliases/node（针对当前用户）外，其他步骤通常需要 root。
   2) 建议传入 TARGET_USER=你的用户名（例如 TARGET_USER=your_user）。
   3) 执行 nginx 步骤时，需准备 domains.json，且默认要求 CERTBOT_EMAIL。
   4) security 步骤仅包含 fail2ban/ssh 加固，不再默认包含 ufw。如需防火墙，请显式添加 ufw 步骤。
+  5) incident 步骤会阻断已知 C2 和出站 23/2323，并加固 Nezha 命令执行配置。
+  6) remediate 步骤用于未重装节点的 Nezha 入侵清理，会杀 IOC 进程并备份取证。
 EOF
 }
 
@@ -26,16 +28,19 @@ script_for_step() {
     base) echo "setup_base.sh" ;;
     aliases) echo "setup_aliases.sh" ;;
     security) echo "setup_security.sh" ;;
+    incident) echo "setup_incident_hardening.sh" ;;
+    remediate) echo "remediation/nezha-compromise-remediate.sh" ;;
     docker) echo "setup_docker.sh" ;;
     node) echo "setup_nodejs.sh" ;;
     nginx) echo "setup_nginx_proxy.sh" ;;
     ufw) echo "setup_ufw.sh" ;;
+    nezha) echo "setup_nezha.sh" ;;
     *) return 1 ;;
   esac
 }
 
-DEFAULT_STEPS=(base aliases security docker)
-ALL_STEPS=(base aliases security docker node)
+DEFAULT_STEPS=(base aliases security incident docker)
+ALL_STEPS=(base aliases security incident docker node)
 
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   usage

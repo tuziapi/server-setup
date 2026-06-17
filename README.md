@@ -21,7 +21,7 @@
 - 非 `root`：优先使用 `su -c '... | bash'`
 - 非 `root` 且有 `sudo`：也可使用 `| sudo bash`
 
-默认步骤（`base aliases security docker`）：
+默认步骤（`base aliases security incident docker`）：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/tuziapi/server-setup/main/install.sh | bash
@@ -58,6 +58,7 @@ curl -fsSL https://raw.githubusercontent.com/tuziapi/server-setup/main/install.s
 - `nginx` 是安装步骤参数，必须放在 `bash -s --` 后，不要写成 `nginx curl ...`。
 - `install.sh` 会自动选择目标用户（用于 aliases/docker/node），如需覆盖可设置环境变量 `TARGET_USER`。
 - `security` 步骤仅配置 `fail2ban` 和 SSH 加固，**不包含 UFW**。
+- `incident` 步骤会执行事故防复发加固：阻断已知 C2、阻断出站 `23/2323`、持久化 iptables、加固 Nezha 命令执行配置。
 - 如需启用防火墙，请显式添加 `ufw` 步骤（例如 `bash setup_all.sh ... ufw`）。
 - `ufw` 步骤默认会自动放行当前正在对外监听的端口，避免启用 UFW 后业务不可访问。
 - 自动放行基于 `ss -lntup` 探测，仅对非 `127.0.0.1`/`::1` 监听端口生效（本机回环端口不会放行）。
@@ -77,11 +78,13 @@ su -c 'curl -fsSL https://raw.githubusercontent.com/tuziapi/server-setup/main/in
 | `setup_base.sh` | 安装基础软件（curl/git/jq/tmux/ufw/fail2ban 等）并拉起常用服务 | `bash setup_base.sh` |
 | `setup_aliases.sh` | 为用户写入 `~/.server_aliases`，自动接入 `.bashrc/.zshrc` | `TARGET_USER=your_user bash setup_aliases.sh` |
 | `setup_security.sh` | 配置 fail2ban + SSH 加固（不含 UFW） | `SSH_PORT=22 bash setup_security.sh` |
+| `setup_incident_hardening.sh` | 事故防复发加固：C2/出站扫描阻断、iptables 持久化、Nezha 命令执行禁用、root SSH 检查 | `bash setup_incident_hardening.sh` |
+| `remediation/nezha-compromise-remediate.sh` | 未重装节点的 Nezha 入侵清理：杀 IOC 进程、备份样本、删恶意文件、阻断扫描 | `bash remediation/nezha-compromise-remediate.sh` |
 | `setup_ufw.sh` | 配置 UFW 防火墙，默认自动放行监听端口 | `SSH_PORT=22 ALLOW_PORTS=80,443 bash setup_ufw.sh` |
 | `setup_docker.sh` | 使用 Docker 官方安装脚本安装 Docker | `TARGET_USER=your_user bash setup_docker.sh` |
 | `setup_nodejs.sh` | 使用 nvm 官方安装脚本安装 Node.js（默认 LTS） | `TARGET_USER=your_user bash setup_nodejs.sh` |
 | `setup_nginx_proxy.sh` | 按 `domains.json` 批量配置 Nginx 反向代理，可选自动签发证书 | `bash setup_nginx_proxy.sh --config domains.json --email you@example.com` |
-| `setup_all.sh` | 一键执行多个步骤（默认 base+aliases+security+docker） | `TARGET_USER=your_user bash setup_all.sh` |
+| `setup_all.sh` | 一键执行多个步骤（默认 base+aliases+security+incident+docker） | `TARGET_USER=your_user bash setup_all.sh` |
 
 ## 2. 推荐执行顺序
 
@@ -90,16 +93,59 @@ su -c 'curl -fsSL https://raw.githubusercontent.com/tuziapi/server-setup/main/in
 1. `bash setup_base.sh`
 2. `TARGET_USER=your_user bash setup_aliases.sh`
 3. `SSH_PORT=22 bash setup_security.sh`
-4. `SSH_PORT=22 ALLOW_PORTS=80,443 bash setup_ufw.sh`（可选，建议在确认 SSH 连接无误后执行）
-5. `TARGET_USER=your_user bash setup_docker.sh`
-6. `TARGET_USER=your_user bash setup_nodejs.sh`（如需 Node.js）
-7. `bash setup_nginx_proxy.sh --config domains.json --email you@example.com`（如需反代 + SSL）
+4. `bash setup_incident_hardening.sh`
+5. `SSH_PORT=22 ALLOW_PORTS=80,443 bash setup_ufw.sh`（可选，建议在确认 SSH 连接无误后执行）
+6. `TARGET_USER=your_user bash setup_docker.sh`
+7. `TARGET_USER=your_user bash setup_nodejs.sh`（如需 Node.js）
+8. `bash setup_nginx_proxy.sh --config domains.json --email you@example.com`（如需反代 + SSL）
 
 如果想一次执行（不含 nginx）：
 
 ```bash
 TARGET_USER=your_user bash setup_all.sh all
 ```
+
+## 2.1 重装后推荐加固命令
+
+针对被 Nezha 命令执行能力打穿过的节点，重装系统后建议先执行默认全套：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/tuziapi/server-setup/main/install.sh | bash
+```
+
+如希望装完后暂时停掉 Nezha Agent，避免 Dashboard 密钥轮换前再次下发命令：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/tuziapi/server-setup/main/install.sh | bash -s -- base aliases security incident docker --stop-nezha-agent
+```
+
+如果只想在已清理或重装后的节点上补事故防复发加固：
+
+```bash
+bash setup_incident_hardening.sh
+```
+
+如果是未重装、疑似仍被感染的节点，先跑清理脚本：
+
+```bash
+bash remediation/nezha-compromise-remediate.sh
+```
+
+远程一键清理未重装节点：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/tuziapi/server-setup/main/install.sh | bash -s -- remediate --stop-nezha-agent
+```
+
+`incident` 步骤默认会：
+- 阻断已知 C2 IP：`207.58.173.192,103.106.228.23`
+- 阻断出站 TCP `23,2323`，防止 telnet 扫描再次触发 RBL
+- 保存 `/etc/iptables/rules.v4`
+- 在缺失时创建 `netfilter-persistent.service` 做开机恢复
+- 将 `/opt/nezha/agent/config*.yml` 中的 `disable_command_execute` 设为 `true`
+- 检查 `/root/.ssh/authorized_keys` 权限、属性和已知恶意 key
+
+注意：该步骤不替代密钥轮换。事故后仍需轮换 root 密码、SSH 公钥、Nezha `agent_secret_key`/`jwt_secret_key`、数据库密码和 API token。
 
 ## 3. Nginx 反向代理配置
 
@@ -174,6 +220,9 @@ ufw reload
 - `AUTO_ALLOW_EXCLUDE_PORTS`：(仅 ufw) 自动放行排除列表，默认 `68/udp,546/udp`。
 - `HARDEN_SSH=1`：启用 SSH 基础加固（`PermitRootLogin prohibit-password`）。
 - `DISABLE_PASSWORD_AUTH=1`：配合 `HARDEN_SSH=1` 禁用 SSH 密码登录。
+- `KNOWN_C2_IPS`：(仅 incident) 事故防复发 C2 IP 列表，逗号分隔。
+- `TELNET_SCAN_PORTS`：(仅 incident) 出站扫描端口阻断列表，默认 `23,2323`。
+- `STOP_NEZHA_AGENT=1`：(仅 incident) 停止并禁用 `nezha-agent.service`。
 - `DOCKER_CHANNEL`：Docker 渠道，默认 `stable`。
 - `NODE_VERSION`：Node 版本，默认 `lts/*`。
 
@@ -185,7 +234,7 @@ ufw reload
 ## 5. 仓库内一键入口脚本
 
 ```bash
-# 默认执行: base aliases security docker
+# 默认执行: base aliases security incident docker
 TARGET_USER=your_user bash setup_all.sh
 
 # 执行指定步骤

@@ -27,7 +27,7 @@ usage() {
   bash install.sh base aliases security     # 自动安装指定步骤
 
 支持步骤:
-  base aliases security docker node nginx nezha all
+  base aliases security incident remediate docker node nginx nezha all
 
 常用参数:
   --repo <owner/repo>          GitHub 仓库（默认: tuziapi/server-setup）
@@ -41,6 +41,9 @@ usage() {
                                 自动放行排除列表（默认 68/udp,546/udp）
   --harden-ssh                  启用 SSH 基础加固
   --disable-password-auth       禁用 SSH 密码登录（会自动开启 --harden-ssh）
+  --stop-nezha-agent            incident 步骤中停止并禁用 nezha-agent.service
+  --known-c2-ips <list>         incident 步骤阻断的 C2 IP（逗号分隔）
+  --telnet-scan-ports <list>    incident 步骤阻断的出站扫描端口（默认 23,2323）
   --docker-channel <channel>    Docker 渠道（默认 stable）
   --node-version <version>      Node 版本（默认 lts/*）
   --nvm-version <version>       nvm 版本（默认 v0.40.4）
@@ -108,8 +111,8 @@ interactive_menu() {
   elif (exec 3</dev/tty) 2>/dev/null; then
     exec 3</dev/tty
   else
-    warn "无交互终端，无法显示菜单，使用默认步骤: base aliases security docker"
-    STEPS=(base aliases security docker)
+    warn "无交互终端，无法显示菜单，使用默认步骤: base aliases security incident docker"
+    STEPS=(base aliases security incident docker)
     return 0
   fi
 
@@ -119,7 +122,7 @@ interactive_menu() {
   printf "${GREEN}========================================${NC}\n"
   printf "\n"
   printf "请选择安装场景:\n"
-  printf "  ${YELLOW}1)${NC} 基础环境 (Base + Aliases + Security)\n"
+  printf "  ${YELLOW}1)${NC} 基础环境 (Base + Aliases + Security + Incident hardening)\n"
   printf "  ${YELLOW}2)${NC} Docker 环境 (推荐, 含基础)\n"
   printf "  ${YELLOW}3)${NC} Node.js 环境 (含基础)\n"
   printf "  ${YELLOW}4)${NC} 全功能环境 (Docker + Node + 基础)\n"
@@ -133,15 +136,15 @@ interactive_menu() {
   choice="${choice:-2}"
 
   case "$choice" in
-    1) STEPS=(base aliases security) ;;
-    2) STEPS=(base aliases security docker) ;;
-    3) STEPS=(base aliases security node) ;;
-    4) STEPS=(base aliases security docker node) ;;
-    5) STEPS=(base aliases security docker nginx) ;;
+    1) STEPS=(base aliases security incident) ;;
+    2) STEPS=(base aliases security incident docker) ;;
+    3) STEPS=(base aliases security incident node) ;;
+    4) STEPS=(base aliases security incident docker node) ;;
+    5) STEPS=(base aliases security incident docker nginx) ;;
     6) STEPS=(nezha) ;;
     7)
        printf "\n请选择步骤 (空格分隔，例如: base docker):\n"
-       printf "可用步骤: base aliases security docker node nginx nezha\n"
+       printf "可用步骤: base aliases security incident remediate docker node nginx nezha\n"
        read -u 3 -p "> " -a custom_steps
        STEPS=("${custom_steps[@]}")
        ;;
@@ -196,7 +199,7 @@ require_value() {
 
 validate_step() {
   case "$1" in
-    base|aliases|security|docker|node|nginx|nezha) return 0 ;;
+    base|aliases|security|incident|remediate|docker|node|nginx|nezha) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -268,6 +271,9 @@ AUTO_ALLOW_LISTENING_PORTS="${AUTO_ALLOW_LISTENING_PORTS:-1}"
 AUTO_ALLOW_EXCLUDE_PORTS="${AUTO_ALLOW_EXCLUDE_PORTS:-68/udp,546/udp}"
 HARDEN_SSH="${HARDEN_SSH:-0}"
 DISABLE_PASSWORD_AUTH="${DISABLE_PASSWORD_AUTH:-0}"
+STOP_NEZHA_AGENT="${STOP_NEZHA_AGENT:-0}"
+KNOWN_C2_IPS="${KNOWN_C2_IPS:-207.58.173.192,103.106.228.23}"
+TELNET_SCAN_PORTS="${TELNET_SCAN_PORTS:-23,2323}"
 DOCKER_CHANNEL="${DOCKER_CHANNEL:-stable}"
 NODE_VERSION="${NODE_VERSION:-lts/*}"
 NVM_VERSION="${NVM_VERSION:-v0.40.4}"
@@ -331,6 +337,20 @@ while [[ "$#" -gt 0 ]]; do
       DISABLE_PASSWORD_AUTH=1
       HARDEN_SSH=1
       shift
+      ;;
+    --stop-nezha-agent)
+      STOP_NEZHA_AGENT=1
+      shift
+      ;;
+    --known-c2-ips)
+      require_value "$1" "${2:-}"
+      KNOWN_C2_IPS="$2"
+      shift 2
+      ;;
+    --telnet-scan-ports)
+      require_value "$1" "${2:-}"
+      TELNET_SCAN_PORTS="$2"
+      shift 2
       ;;
     --docker-channel)
       require_value "$1" "${2:-}"
@@ -409,10 +429,10 @@ if [[ "${#STEPS[@]}" -eq 0 ]]; then
   if [[ -t 0 ]] || [[ -e /dev/tty ]]; then
     interactive_menu
   else
-    STEPS=(base aliases security docker)
+    STEPS=(base aliases security incident docker)
   fi
 elif [[ "${#STEPS[@]}" -eq 1 && "${STEPS[0]}" == "all" ]]; then
-  STEPS=(base aliases security docker node)
+  STEPS=(base aliases security incident docker node)
 fi
 
 for step in "${STEPS[@]}"; do
@@ -487,6 +507,20 @@ for step in "${STEPS[@]}"; do
         HARDEN_SSH="$HARDEN_SSH" \
         DISABLE_PASSWORD_AUTH="$DISABLE_PASSWORD_AUTH" \
         bash ./setup_security.sh
+      ;;
+    incident)
+      run_dir_cmd "$REPO_DIR" env \
+        STOP_NEZHA_AGENT="$STOP_NEZHA_AGENT" \
+        KNOWN_C2_IPS="$KNOWN_C2_IPS" \
+        TELNET_SCAN_PORTS="$TELNET_SCAN_PORTS" \
+        bash ./setup_incident_hardening.sh
+      ;;
+    remediate)
+      remediate_cmd=(bash ./remediation/nezha-compromise-remediate.sh)
+      if [[ "$STOP_NEZHA_AGENT" -eq 0 ]]; then
+        remediate_cmd+=(--allow-nezha-restart)
+      fi
+      run_dir_cmd "$REPO_DIR" "${remediate_cmd[@]}"
       ;;
     docker)
       run_dir_cmd "$REPO_DIR" env \
